@@ -1,0 +1,51 @@
+FROM quay.io/pypa/manylinux2014_x86_64
+
+# Install system dependencies
+RUN yum install -y \
+    gcc \
+    gcc-c++ \
+    cmake \
+    git \
+    gmp-devel \
+    mpfr-devel \
+    libstdc++-devel \
+    make \
+    which && \
+    yum clean all
+
+# Install and Boost 1.69
+RUN yum install -y boost169 boost169-devel
+RUN ln -sf /usr/include/boost169/boost /usr/include/boost && \
+    ln -s /usr/lib64/boost169/libboost_*.so /usr/lib64/
+RUN ldconfig
+
+# Install CGAL
+ARG CGAL_VERSION_TAG="v5.6"
+RUN git clone --branch ${CGAL_VERSION_TAG} --depth 1 https://github.com/CGAL/cgal.git /tmp/cgal \
+    && cd /tmp/cgal \
+    && mkdir build \
+    && cd build \
+    && cmake  -DCMAKE_INSTALL_PREFIX=/usr -DCMAKE_BUILD_TYPE=Release -DCMAKE_POLICY_VERSION_MINIMUM=3.5 .. \
+    && make install | (sed -u 20q;tail -n20) \
+    && rm -rf /tmp/cgal
+
+# Create working directories
+RUN mkdir -p /app/output && chmod 777 /app/output
+
+# For runnint tests. Move to build_wheel.sh for multiple Python versions building.
+ARG PYTHON_VERSION_MINOR="10"
+RUN python3.${PYTHON_VERSION_MINOR} -m pip install pytest matplotlib IPython
+
+# Copy build script and set permissions
+COPY include/  /tmp/scikit-geometry/include/
+COPY skgeom/ /tmp/scikit-geometry/skgeom/
+COPY src/ /tmp/scikit-geometry/src/
+COPY test/ /tmp/scikit-geometry/test/
+COPY setup.py /tmp/scikit-geometry
+COPY docker/build_wheel.sh /tmp/scikit-geometry
+RUN chmod +x /tmp/scikit-geometry/build_wheel.sh
+
+WORKDIR /tmp/scikit-geometry
+# Set the entrypoint
+ENTRYPOINT ["./build_wheel.sh"]
+
