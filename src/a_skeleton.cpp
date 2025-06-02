@@ -4,6 +4,11 @@
 #include <CGAL/create_straight_skeleton_from_polygon_with_holes_2.h>
 #include <CGAL/create_offset_polygons_2.h>
 
+#include <CGAL/create_weighted_offset_polygons_2.h>
+#include <CGAL/create_weighted_offset_polygons_from_polygon_with_holes_2.h>
+#include <CGAL/create_weighted_straight_skeleton_2.h>
+#include <CGAL/create_weighted_straight_skeleton_from_polygon_with_holes_2.h>
+
 typedef CGAL::Straight_skeleton_2<Kernel> Skeleton_2;
 typedef std::shared_ptr<Skeleton_2>       Skeleton_2_Ref;
 
@@ -59,7 +64,7 @@ public:
 	SafeIterator<OwnerRef, Iterator, Value> operator++(int) {
 		auto tmp(*this);
         operator++();
-        return tmp; 
+        return tmp;
 	}
 
 	SafeValue<OwnerRef, Value> operator*() const {
@@ -139,4 +144,12 @@ void init_skeleton(py::module & m) {
 		return to_std(CGAL::create_exterior_straight_skeleton_2(
 			Kernel::FT(max_offset), polygon, Kernel()));
 	});
+
+/*
+	sub.def("create_interior_weighted_straight_skeleton", [](
+		const Polygon_2 &polygon, double max_offset) -> Skeleton_2_Ref {
+		return to_std(CGAL::create_interior_weighted_straight_skeleton_2(
+			Kernel::FT(max_offset), polygon, Kernel()));
+	});
+*/
 }

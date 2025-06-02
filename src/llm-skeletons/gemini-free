@@ -1,0 +1,515 @@
+#include "skgeom.hpp" // Assuming this contains your Kernel and Polygon type definitions
+
+#include <CGAL/Exact_predicates_inexact_constructions_kernel.h>
+#include <CGAL/Polygon_2.h>
+#include <CGAL/Polygon_with_holes_2.h>
+#include <CGAL/Straight_skeleton_2.h>
+
+#include <CGAL/create_straight_skeleton_2.h>
+#include <CGAL/create_straight_skeleton_from_polygon_with_holes_2.h>
+#include <CGAL/create_offset_polygons_2.h>
+#include <CGAL/create_offset_polygons_from_polygon_with_holes_2.h> // For non-weighted offset with holes
+
+#include <CGAL/create_weighted_straight_skeleton_2.h>
+#include <CGAL/create_weighted_straight_skeleton_from_polygon_with_holes_2.h>
+#include <CGAL/create_weighted_offset_polygons_2.h>
+#include <CGAL/create_weighted_offset_polygons_from_polygon_with_holes_2.h>
+
+
+#include <pybind11/pybind11.h>
+#include <pybind11/stl.h> // Required for automatic type conversion for std::vector, etc.
+#include <pybind11/operators.h> // For operator overloading if needed
+
+#include <vector>
+#include <memory> // For std::shared_ptr
+#include <cassert>
+
+// Assuming Kernel, Polygon_2, Polygon_with_holes_2 are defined in skgeom.hpp or similar
+// For demonstration, let's use a common kernel if not defined.
+#ifndef Kernel
+typedef CGAL::Exact_predicates_inexact_constructions_kernel Kernel;
+#endif
+#ifndef Polygon_2
+typedef CGAL::Polygon_2<Kernel> Polygon_2;
+#endif
+#ifndef Polygon_with_holes_2
+typedef CGAL::Polygon_with_holes_2<Kernel> Polygon_with_holes_2;
+#endif
+
+
+namespace py = pybind11;
+
+typedef CGAL::Straight_skeleton_2<Kernel> Skeleton_2;
+typedef std::shared_ptr<Skeleton_2>       Skeleton_2_Ref;
+
+// Typedefs for skeleton vertex and halfedge access (from original file)
+typedef Skeleton_2::Vertex_const_iterator VertexConstIterator;
+typedef Skeleton_2::Halfedge_const_iterator HalfedgeConstIterator;
+
+// Using actual types directly for clarity in SafeValue/SafeIterator if Skeleton_2::Vertex and ::Halfedge are types
+typedef Skeleton_2::Vertex                Skeleton_2_Vertex_Type;
+typedef Skeleton_2::Halfedge              Skeleton_2_Halfedge_Type;
+
+
+// Helper to convert boost::shared_ptr to std::shared_ptr (from original file)
+template<typename T>
+std::shared_ptr<T> to_std(boost::shared_ptr<T> ptr) {
+    if (!ptr) return nullptr;
+    return std::shared_ptr<T>(ptr.get(), [ptr](T* /*p*/) mutable {
+        // The lambda captures ptr to keep it alive.
+        // When std::shared_ptr goes out of scope, ptr's use count decreases.
+        // assert(ptr.get() == p); // This assert might be problematic if ptr was already nullified elsewhere
+        ptr.reset();
+    });
+}
+
+// Safe wrapper classes (from original file)
+template<typename OwnerRef, typename Value>
+class SafeValue {
+public:
+    OwnerRef owner; // Keep the owner alive
+    Value value;    // The actual CGAL object (e.g., Vertex or Halfedge)
+
+    // Constructor
+    SafeValue(const OwnerRef& o, const Value& v) : owner(o), value(v) {}
+
+    const Value* operator->() const {
+        return &value;
+    }
+     // Dereference to get the underlying CGAL object
+    const Value& operator*() const {
+        return value;
+    }
+};
+
+template<typename OwnerRef, typename Iterator, typename Value>
+class SafeIterator {
+    OwnerRef _owner; // Keep the owner alive
+    Iterator _it;
+
+public:
+    SafeIterator(const OwnerRef &owner, Iterator it) : _owner(owner), _it(it) {}
+
+    // Iterator traits
+    using iterator_category = std::forward_iterator_tag;
+    using value_type = SafeValue<OwnerRef, Value>;
+    using difference_type = std::ptrdiff_t;
+    using pointer = const value_type*;
+    using reference = const value_type&;
+
+
+    bool operator==(const SafeIterator &other) const { return _it == other._it; }
+    bool operator!=(const SafeIterator &other) const { return !(*this == other); }
+
+    SafeIterator &operator++() {
+        ++_it;
+        return *this;
+    }
+
+    SafeIterator operator++(int) {
+        SafeIterator tmp(*this);
+        ++(*this);
+        return tmp;
+    }
+
+    value_type operator*() const {
+        // When dereferencing, _it points to the CGAL internal object.
+        // We need to construct a SafeValue which holds a *copy* of this CGAL object.
+        return SafeValue<OwnerRef, Value>(_owner, *_it);
+    }
+};
+
+// Specific SafeIterator and SafeValue types
+typedef SafeIterator<Skeleton_2_Ref, VertexConstIterator, Skeleton_2_Vertex_Type> Safe_Skeleton_2_Vertex_Iterator;
+typedef SafeValue<Skeleton_2_Ref, Skeleton_2_Vertex_Type> Safe_Skeleton_2_Vertex;
+
+typedef SafeIterator<Skeleton_2_Ref, HalfedgeConstIterator, Skeleton_2_Halfedge_Type> Safe_Skeleton_2_Halfedge_Iterator;
+typedef SafeValue<Skeleton_2_Ref, Skeleton_2_Halfedge_Type> Safe_Skeleton_2_Halfedge;
+
+
+// Helper function to convert Python list of floats to std::vector<Kernel::FT>
+std::vector<Kernel::FT> py_list_to_weights_vector(const py::list& py_weights) {
+    std::vector<Kernel::FT> weights;
+    weights.reserve(py_weights.size());
+    for (auto item : py_weights) {
+        weights.emplace_back(item.cast<double>());
+    }
+    return weights;
+}
+
+// Helper function to convert Python list of lists of floats to std::vector<std::vector<Kernel::FT>>
+std::vector<std::vector<Kernel::FT>> py_list_to_hole_weights_vector(const py::list& py_hole_weights_list) {
+    std::vector<std::vector<Kernel::FT>> all_weights;
+    all_weights.reserve(py_hole_weights_list.size());
+    for (auto py_contour_weights_obj : py_hole_weights_list) {
+        py::list py_contour_weights = py_contour_weights_obj.cast<py::list>();
+        all_weights.push_back(py_list_to_weights_vector(py_contour_weights));
+    }
+    return all_weights;
+}
+
+
+PYBIND11_MODULE(skgeom, m) {
+    m.doc() = "Python bindings for CGAL Straight Skeletons and Offsets";
+
+    py::class_<Kernel>(m, "Kernel")
+        .def(py::init<>()); // Basic constructor
+
+    py::class_<Polygon_2>(m, "Polygon2")
+        .def(py::init<>())
+        .def("push_back", [](Polygon_2 &p, const Kernel::Point_2 &pt) { p.push_back(pt); })
+        .def("clear", &Polygon_2::clear)
+        .def_property_readonly("vertices", [](const Polygon_2 &p) {
+            return py::make_iterator(p.vertices_begin(), p.vertices_end());
+        })
+        .def("__len__", &Polygon_2::size)
+        .def("is_empty", &Polygon_2::is_empty)
+        .def("is_clockwise_oriented", &Polygon_2::is_clockwise_oriented)
+        .def("is_counterclockwise_oriented", &Polygon_2::is_counterclockwise_oriented)
+        .def("reverse_orientation", &Polygon_2::reverse_orientation)
+        .def("area", &Polygon_2::area);
+
+
+    py::class_<Polygon_with_holes_2>(m, "PolygonWithHoles2")
+        .def(py::init<const Polygon_2&>())
+        .def(py::init<const Polygon_2&, const std::vector<Polygon_2>&>(),
+             py::arg("outer_boundary"), py::arg("holes"))
+        .def_property_readonly("outer_boundary", [](const Polygon_with_holes_2 &pwh){ return pwh.outer_boundary(); })
+        .def_property_readonly("holes", [](const Polygon_with_holes_2 &pwh) {
+            std::vector<Polygon_2> holes_vec;
+            for (auto hit = pwh.holes_begin(); hit != pwh.holes_end(); ++hit) {
+                holes_vec.push_back(*hit);
+            }
+            return holes_vec;
+        })
+        .def("add_hole", [](Polygon_with_holes_2 &pwh, const Polygon_2 &hole){ pwh.add_hole(hole); })
+        .def("clear_holes", &Polygon_with_holes_2::clear_holes)
+        .def_property_readonly("number_of_holes", &Polygon_with_holes_2::number_of_holes)
+        .def("is_unbounded", &Polygon_with_holes_2::is_unbounded);
+
+    // Kernel::Point_2 binding (if not already in skgeom.hpp)
+    py::class_<Kernel::Point_2>(m, "Point2")
+        .def(py::init<double, double>(), py::arg("x"), py::arg("y"))
+        .def_property_readonly("x", [](const Kernel::Point_2 &p){ return p.x(); })
+        .def_property_readonly("y", [](const Kernel::Point_2 &p){ return p.y(); })
+        .def("__repr__", [](const Kernel::Point_2 &p) {
+            return "Point2(" + std::to_string(CGAL::to_double(p.x())) + ", " + std::to_string(CGAL::to_double(p.y())) + ")";
+        });
+
+    // --- Skeleton Classes ---
+    py::class_<Skeleton_2, Skeleton_2_Ref /* holder */>(m, "Skeleton")
+        .def_property_readonly("vertices", [](const Skeleton_2_Ref &s) {
+            if (!s) throw std::runtime_error("Skeleton is null");
+            return py::make_iterator(
+                Safe_Skeleton_2_Vertex_Iterator(s, s->vertices_begin()),
+                Safe_Skeleton_2_Vertex_Iterator(s, s->vertices_end()));
+        })
+        .def_property_readonly("halfedges", [](const Skeleton_2_Ref &s) {
+            if (!s) throw std::runtime_error("Skeleton is null");
+            return py::make_iterator(
+                Safe_Skeleton_2_Halfedge_Iterator(s, s->halfedges_begin()),
+                Safe_Skeleton_2_Halfedge_Iterator(s, s->halfedges_end()));
+        })
+        .def("offset_polygons", [](const Skeleton_2_Ref &s, double offset) -> py::list {
+            if (!s) throw std::runtime_error("Skeleton is null for offset_polygons");
+            py::list r;
+            // Use Kernel() to specify the kernel for output polygons if needed,
+            // or rely on default template deduction if Polygon_2 is fixed.
+            auto result = CGAL::create_offset_polygons_2<Polygon_2>(Kernel::FT(offset), *s, Kernel());
+            for (const auto &polygon_ptr : result) {
+                if(polygon_ptr) { // Ensure the pointer is valid
+                    // py::cast owns the new Polygon_2
+                    r.append(py::cast(new Polygon_2(*polygon_ptr), py::return_value_policy::take_ownership));
+                }
+            }
+            return r;
+        });
+
+    py::class_<Safe_Skeleton_2_Vertex>(m, "SkeletonVertex")
+        .def_property_readonly("id", [](const Safe_Skeleton_2_Vertex &v_safe) {
+            return v_safe->id();
+        })
+        .def_property_readonly("point", [](const Safe_Skeleton_2_Vertex &v_safe) {
+            return v_safe->point();
+        })
+        .def_property_readonly("time", [](const Safe_Skeleton_2_Vertex &v_safe) {
+            return v_safe->time();
+        })
+         .def_property_readonly("is_skeleton", [](const Safe_Skeleton_2_Vertex &v_safe) {
+            return v_safe->is_skeleton();
+        });
+
+
+    py::class_<Safe_Skeleton_2_Halfedge>(m, "SkeletonHalfedge")
+        .def_property_readonly("opposite", [](const Safe_Skeleton_2_Halfedge &h_safe) {
+            // The owner is propagated. The new halfedge is a copy.
+            return Safe_Skeleton_2_Halfedge{h_safe.owner, *(h_safe->opposite())};
+        })
+        .def_property_readonly("next", [](const Safe_Skeleton_2_Halfedge &h_safe) {
+            return Safe_Skeleton_2_Halfedge{h_safe.owner, *(h_safe->next())};
+        })
+        .def_property_readonly("prev", [](const Safe_Skeleton_2_Halfedge &h_safe) {
+            return Safe_Skeleton_2_Halfedge{h_safe.owner, *(h_safe->prev())};
+        })
+        .def_property_readonly("is_border", [](const Safe_Skeleton_2_Halfedge &h_safe) {
+            return h_safe->is_border();
+        })
+        .def_property_readonly("vertex", [](const Safe_Skeleton_2_Halfedge &h_safe) {
+            // The owner is propagated. The vertex is a copy.
+            return Safe_Skeleton_2_Vertex{h_safe.owner, *(h_safe->vertex())};
+        })
+        .def_property_readonly("defining_contour_edge_id", [](const Safe_Skeleton_2_Halfedge &h_safe) {
+            return h_safe->defining_contour_edge_id();
+        })
+        .def_property_readonly("is_bisector", [](const Safe_Skeleton_2_Halfedge &h_safe) {
+            return h_safe->is_bisector();
+        });
+
+    // --- Skeleton Creation Submodule ---
+    py::module sub = m.def_submodule("skeleton", "Straight skeleton and offset creation functions");
+
+    // --- Non-Weighted Straight Skeleton ---
+    sub.def("create_interior_straight_skeleton", [](
+        const Polygon_2 &polygon) -> Skeleton_2_Ref {
+        return to_std(CGAL::create_interior_straight_skeleton_2(polygon, Kernel()));
+    }, py::arg("polygon"), "Creates an interior straight skeleton for a polygon.");
+
+    sub.def("create_interior_straight_skeleton", [](
+        const Polygon_with_holes_2 &polygon) -> Skeleton_2_Ref {
+        return to_std(CGAL::create_interior_straight_skeleton_2(polygon, Kernel()));
+    }, py::arg("polygon_with_holes"), "Creates an interior straight skeleton for a polygon with holes.");
+
+    sub.def("create_exterior_straight_skeleton", [](
+        const Polygon_2 &polygon, double max_offset) -> Skeleton_2_Ref {
+        return to_std(CGAL::create_exterior_straight_skeleton_2(
+            Kernel::FT(max_offset), polygon, Kernel()));
+    }, py::arg("polygon"), py::arg("max_offset"), "Creates an exterior straight skeleton for a polygon.");
+
+    // --- Weighted Straight Skeleton ---
+    sub.def("create_interior_weighted_straight_skeleton", [](
+        const Polygon_2 &polygon, const py::list& py_weights) -> Skeleton_2_Ref {
+        std::vector<Kernel::FT> weights = py_list_to_weights_vector(py_weights);
+        if (polygon.size() != weights.size() && !polygon.is_empty()) { // Allow empty polygon with empty weights
+             throw std::runtime_error("Number of polygon vertices and weights must match. Polygon size: " + std::to_string(polygon.size()) + ", Weights size: " + std::to_string(weights.size()));
+        }
+        return to_std(CGAL::create_interior_weighted_straight_skeleton_2(
+            polygon.vertices_begin(), polygon.vertices_end(),
+            weights.begin(), weights.end(),
+            Kernel()));
+    }, py::arg("polygon"), py::arg("weights"), "Creates an interior weighted straight skeleton for a polygon.");
+
+    sub.def("create_interior_weighted_straight_skeleton", [](
+        const Polygon_with_holes_2 &polygon_wh, const py::list& py_all_weights_list) -> Skeleton_2_Ref {
+        std::vector<std::vector<Kernel::FT>> all_weights = py_list_to_hole_weights_vector(py_all_weights_list);
+
+        if (all_weights.empty() && !polygon_wh.outer_boundary().is_empty()) {
+            throw std::runtime_error("Weights list cannot be empty for a non-empty polygon with holes.");
+        }
+        if (!all_weights.empty() && polygon_wh.outer_boundary().size() != all_weights[0].size() && !polygon_wh.outer_boundary().is_empty()) {
+            throw std::runtime_error("Number of outer boundary vertices and its weights must match.");
+        }
+        if (all_weights.size() != polygon_wh.number_of_holes() + 1 && !polygon_wh.outer_boundary().is_empty()) {
+             throw std::runtime_error("Number of weight lists must match number of holes + 1 (for outer boundary). Provided weights lists: " + std::to_string(all_weights.size()) + ", Expected: " + std::to_string(polygon_wh.number_of_holes() + 1));
+        }
+
+        std::vector<Polygon_2> holes_vec;
+        for(auto hit = polygon_wh.holes_begin(); hit != polygon_wh.holes_end(); ++hit) {
+            holes_vec.push_back(*hit);
+        }
+
+        // Check weights for each hole
+        for(size_t i = 0; i < holes_vec.size(); ++i) {
+            if (holes_vec[i].size() != all_weights[i+1].size() && !holes_vec[i].is_empty()) {
+                 throw std::runtime_error("Number of vertices in hole " + std::to_string(i) + " and its weights must match.");
+            }
+        }
+
+        // CGAL expects iterators to weights for outer contour, and iterators to vectors of weights for holes.
+        // The create_interior_weighted_straight_skeleton_2 from ..._from_polygon_with_holes_2.h is simpler.
+        return to_std(CGAL::create_interior_weighted_straight_skeleton_2(polygon_wh, all_weights, Kernel()));
+    }, py::arg("polygon_with_holes"), py::arg("weights_list"), "Creates an interior weighted straight skeleton for a polygon with holes. Weights are a list of lists: [[outer_w], [hole1_w], ...]");
+
+    sub.def("create_exterior_weighted_straight_skeleton", [](
+        const Polygon_2 &polygon, const py::list& py_weights, double max_offset) -> Skeleton_2_Ref {
+        std::vector<Kernel::FT> weights = py_list_to_weights_vector(py_weights);
+         if (polygon.size() != weights.size() && !polygon.is_empty()) {
+             throw std::runtime_error("Number of polygon vertices and weights must match.");
+        }
+        return to_std(CGAL::create_exterior_weighted_straight_skeleton_2(
+            Kernel::FT(max_offset),
+            polygon.vertices_begin(), polygon.vertices_end(),
+            weights.begin(), weights.end(),
+            Kernel()));
+    }, py::arg("polygon"), py::arg("weights"), py::arg("max_offset"), "Creates an exterior weighted straight skeleton for a polygon.");
+
+
+    // --- Weighted Offset Polygon Creation ---
+    // These functions create the skeleton and then the offset polygons in one go.
+
+    sub.def("create_interior_weighted_skeleton_and_offset_polygons", [](
+        const Polygon_2 &polygon, const py::list& py_weights, double offset) -> py::list {
+        std::vector<Kernel::FT> weights = py_list_to_weights_vector(py_weights);
+        if (polygon.size() != weights.size() && !polygon.is_empty()) {
+             throw std::runtime_error("Number of polygon vertices and weights must match.");
+        }
+
+        // The CGAL function `create_interior_weighted_skeleton_and_offset_polygons_2`
+        // takes iterators for holes and their weights. For a simple polygon, we pass empty iterators.
+        std::vector<Polygon_2> no_holes;
+        std::vector<std::vector<Kernel::FT>> no_hole_weights;
+
+        auto result = CGAL::create_interior_weighted_skeleton_and_offset_polygons_2<Kernel::FT, Polygon_2, decltype(no_holes.begin()), std::vector<Kernel::FT>, decltype(no_hole_weights.begin()), Kernel, Kernel, Polygon_2>(
+            Kernel::FT(offset),
+            polygon,
+            no_holes.begin(), no_holes.end(), // No holes
+            weights, // Weights for the outer boundary
+            no_hole_weights.begin(), no_hole_weights.end(), // No weights for holes
+            Kernel(), Kernel() // Kernels for offset and skeleton
+        );
+
+        py::list r;
+        for (const auto &polygon_ptr : result) {
+            if(polygon_ptr) r.append(py::cast(new Polygon_2(*polygon_ptr), py::return_value_policy::take_ownership));
+        }
+        return r;
+    }, py::arg("polygon"), py::arg("weights"), py::arg("offset"), "Creates interior weighted offset polygons for a simple polygon.");
+
+    sub.def("create_interior_weighted_skeleton_and_offset_polygons_with_holes", [](
+        const Polygon_with_holes_2 &polygon_wh, const py::list& py_all_weights_list, double offset) -> py::list {
+        std::vector<std::vector<Kernel::FT>> all_weights = py_list_to_hole_weights_vector(py_all_weights_list);
+        // Validations similar to create_interior_weighted_straight_skeleton for polygon_wh
+        if (all_weights.empty() && !polygon_wh.outer_boundary().is_empty()) {
+            throw std::runtime_error("Weights list cannot be empty for a non-empty polygon with holes.");
+        }
+        if (!all_weights.empty() && polygon_wh.outer_boundary().size() != all_weights[0].size() && !polygon_wh.outer_boundary().is_empty()) {
+            throw std::runtime_error("Number of outer boundary vertices and its weights must match.");
+        }
+         if (all_weights.size() != polygon_wh.number_of_holes() + 1 && !polygon_wh.outer_boundary().is_empty()) {
+             throw std::runtime_error("Number of weight lists must match number of holes + 1 (for outer boundary).");
+        }
+
+
+        // Use the version from create_weighted_offset_polygons_from_polygon_with_holes_2.h
+        // This function returns std::vector<boost::shared_ptr<Polygon_with_holes_2<...>>>
+        // We want to return a list of Polygon_2 for consistency with other offset functions,
+        // or decide to return Polygon_with_holes_2 if that's more appropriate.
+        // The header create_weighted_offset_polygons_from_polygon_with_holes_2.h has:
+        // create_interior_weighted_skeleton_and_offset_polygons_with_holes_2 -> returns OutPolygonWithHoles
+        // create_interior_weighted_skeleton_and_offset_polygons_2 -> returns OutPolygon (simple)
+        // Let's use the one that returns simple polygons first for simpler output.
+
+        // This version takes PolygonWithHoles and Weights (std::vector<std::vector<FT>>) directly
+        auto result = CGAL::create_interior_weighted_skeleton_and_offset_polygons_2<Kernel::FT, Polygon_with_holes_2, std::vector<std::vector<Kernel::FT>>, Kernel, Kernel, Polygon_2>(
+            Kernel::FT(offset),
+            polygon_wh,
+            all_weights, // All weights (outer + holes)
+            Kernel(), Kernel()
+        );
+
+        py::list r;
+        for (const auto &polygon_ptr : result) {
+             if(polygon_ptr) r.append(py::cast(new Polygon_2(*polygon_ptr), py::return_value_policy::take_ownership));
+        }
+        return r;
+    }, py::arg("polygon_with_holes"), py::arg("weights_list"), py::arg("offset"), "Creates interior weighted offset polygons for a polygon with holes. Returns list of simple polygons.");
+
+
+    sub.def("create_exterior_weighted_skeleton_and_offset_polygons", [](
+        const Polygon_2 &polygon, const py::list& py_weights, double offset) -> py::list {
+        std::vector<Kernel::FT> weights = py_list_to_weights_vector(py_weights);
+        if (polygon.size() != weights.size() && !polygon.is_empty()) {
+             throw std::runtime_error("Number of polygon vertices and weights must match.");
+        }
+
+        // For exterior, weights are usually passed as a container of containers, even for a simple polygon.
+        // The API create_exterior_weighted_skeleton_and_offset_polygons_2 in create_weighted_offset_polygons_2.h
+        // takes `const Weights& aWeights`. If `Weights` is `std::vector<Kernel::FT>`, it's fine.
+        // If it expects `std::vector<std::vector<Kernel::FT>>`, we need to wrap `weights`.
+        // Looking at `create_weighted_offset_polygons_2.h`:
+        // `create_exterior_weighted_skeleton_and_offset_polygons_2(const FT& aOffset, const APolygon& aPoly, const Weights& aWeights, ...)`
+        // `Weights` here should be `std::vector<Kernel::FT>` for the single contour.
+        // However, the implementation detail for exterior often involves a frame, and weights might be structured.
+        // The example in CGAL for exterior weighted offset for a simple polygon uses `std::vector<Weight_vector_FT> polygon_weights; polygon_weights.push_back(weights);`
+        // So, `Weights` is `std::vector<std::vector<Kernel::FT>>`.
+
+        std::vector<std::vector<Kernel::FT>> structured_weights;
+        structured_weights.push_back(weights);
+
+        auto result = CGAL::create_exterior_weighted_skeleton_and_offset_polygons_2<Kernel::FT, Polygon_2, std::vector<std::vector<Kernel::FT>>, Kernel, Kernel, Polygon_2>(
+            Kernel::FT(offset),
+            polygon,
+            structured_weights, // Weights for the single contour, wrapped in another vector
+            Kernel(), Kernel()
+        );
+
+        py::list r;
+        for (const auto &polygon_ptr : result) {
+             if(polygon_ptr) r.append(py::cast(new Polygon_2(*polygon_ptr), py::return_value_policy::take_ownership));
+        }
+        return r;
+    }, py::arg("polygon"), py::arg("weights"), py::arg("offset"), "Creates exterior weighted offset polygons for a simple polygon.");
+
+
+    sub.def("create_exterior_weighted_skeleton_and_offset_polygons_with_holes", [](
+        const Polygon_with_holes_2 &polygon_wh, const py::list& py_all_weights_list, double offset) -> py::list {
+        std::vector<std::vector<Kernel::FT>> all_weights = py_list_to_hole_weights_vector(py_all_weights_list);
+        // Validations as before...
+        if (all_weights.empty() && !polygon_wh.outer_boundary().is_empty()) {
+            throw std::runtime_error("Weights list cannot be empty for a non-empty polygon with holes.");
+        }
+        if (!all_weights.empty() && polygon_wh.outer_boundary().size() != all_weights[0].size() && !polygon_wh.outer_boundary().is_empty()) {
+            throw std::runtime_error("Number of outer boundary vertices and its weights must match.");
+        }
+         if (all_weights.size() != polygon_wh.number_of_holes() + 1 && !polygon_wh.outer_boundary().is_empty()) {
+             throw std::runtime_error("Number of weight lists must match number of holes + 1 (for outer boundary).");
+        }
+
+        // This function from create_weighted_offset_polygons_from_polygon_with_holes_2.h returns Polygon_with_holes
+        // `std::vector<boost::shared_ptr<OutPolygonWithHoles>> create_exterior_weighted_skeleton_and_offset_polygons_with_holes_2`
+        // For now, let's try to get simple polygons if a direct function exists, or adapt.
+        // The `create_exterior_weighted_skeleton_and_offset_polygons_2` (plural polygons, not _with_holes)
+        // from `create_weighted_offset_polygons_from_polygon_with_holes_2.h` returns simple polygons.
+
+        auto result = CGAL::create_exterior_weighted_skeleton_and_offset_polygons_2<Kernel::FT, Polygon_with_holes_2, std::vector<std::vector<Kernel::FT>>, Kernel, Kernel, Polygon_2>(
+            Kernel::FT(offset),
+            polygon_wh,
+            all_weights,
+            Kernel(), Kernel()
+        );
+
+        py::list r;
+        for (const auto &polygon_ptr : result) {
+             if(polygon_ptr) r.append(py::cast(new Polygon_2(*polygon_ptr), py::return_value_policy::take_ownership));
+        }
+        return r;
+    }, py::arg("polygon_with_holes"), py::arg("weights_list"), py::arg("offset"), "Creates exterior weighted offset polygons for a polygon with holes. Returns list of simple polygons.");
+
+
+    // Bindings for create_offset_polygons_from_polygon_with_holes_2.h (non-weighted, but useful for completeness)
+    sub.def("create_interior_skeleton_and_offset_polygons_with_holes", [](
+        const Polygon_with_holes_2& pwh, double offset) -> py::list {
+        // This returns a list of Polygon_with_holes_2
+        auto result_pwh = CGAL::create_interior_skeleton_and_offset_polygons_with_holes_2<Kernel::FT, Polygon_with_holes_2, Kernel, Kernel, Polygon_with_holes_2>(
+            Kernel::FT(offset), pwh, Kernel(), Kernel()
+        );
+        py::list r;
+        for (const auto& pwh_ptr : result_pwh) {
+            if (pwh_ptr) r.append(py::cast(new Polygon_with_holes_2(*pwh_ptr), py::return_value_policy::take_ownership));
+        }
+        return r;
+    }, py::arg("polygon_with_holes"), py::arg("offset"), "Creates interior offset polygons (as polygons with holes) for a polygon with holes.");
+
+    sub.def("create_exterior_skeleton_and_offset_polygons_with_holes", [](
+        const Polygon_with_holes_2& pwh, double offset) -> py::list {
+        // This returns a list of Polygon_with_holes_2
+        auto result_pwh = CGAL::create_exterior_skeleton_and_offset_polygons_with_holes_2<Kernel::FT, Polygon_with_holes_2, Kernel, Kernel, Polygon_with_holes_2>(
+            Kernel::FT(offset), pwh, Kernel(), Kernel()
+        );
+        py::list r;
+        for (const auto& pwh_ptr : result_pwh) {
+             if (pwh_ptr) r.append(py::cast(new Polygon_with_holes_2(*pwh_ptr), py::return_value_policy::take_ownership));
+        }
+        return r;
+    }, py::arg("polygon_with_holes"), py::arg("offset"), "Creates exterior offset polygons (as polygons with holes) for a polygon with holes.");
+
+} // PYBIND11_MODULE
