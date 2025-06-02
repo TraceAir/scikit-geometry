@@ -169,12 +169,10 @@ void init_skeleton(py::module & m) {
 		return to_std(CGAL::create_interior_weighted_straight_skeleton_2(polygon, polygons_ws, Kernel()));
 	});
 
-	/*
-
 	sub.def("create_exterior_weighted_straight_skeleton", [](
 		const Polygon_2 &polygon, const py::list &weights, double max_offset) -> Skeleton_2_Ref {
-		return to_std(CGAL::create_exterior_weighted_straight_skeleton(
-			polygon, cgal_weights(weights), Kernel()));
+		Weights ws = cgal_weights(weights);
+		return to_std(CGAL::create_exterior_weighted_straight_skeleton_2(
+			Kernel::FT(max_offset), polygon, ws, Kernel()));
 	});
-*/
 }
