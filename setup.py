@@ -105,7 +105,7 @@ ext_modules = [
             'src/kernel.cpp',
             'src/polygon.cpp',
             'src/global_functions.cpp',
-            # 'src/boolean.cpp',
+            'src/boolean.cpp',
             # 'src/convex_hull.cpp',
             # 'src/visibility.cpp',
             # 'src/arrangement.cpp',

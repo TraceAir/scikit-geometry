@@ -4,8 +4,6 @@
 #include <CGAL/create_straight_skeleton_from_polygon_with_holes_2.h>
 #include <CGAL/create_offset_polygons_2.h>
 
-#include <CGAL/create_weighted_offset_polygons_2.h>
-#include <CGAL/create_weighted_offset_polygons_from_polygon_with_holes_2.h>
 #include <CGAL/create_weighted_straight_skeleton_2.h>
 #include <CGAL/create_weighted_straight_skeleton_from_polygon_with_holes_2.h>
 
@@ -18,12 +16,22 @@ typedef Skeleton_2::Halfedge_const_iterator HalfedgeConstIterator;
 typedef CGAL::HalfedgeDS_in_place_list_vertex<Skeleton_2::Vertex> Skeleton_2_Vertex;
 typedef CGAL::HalfedgeDS_in_place_list_halfedge<Skeleton_2::Halfedge> Skeleton_2_Halfedge;
 
+typedef std::vector<Kernel::FT> Weights;
+
 template<typename T>
 std::shared_ptr<T> to_std(boost::shared_ptr<T> ptr) {
     return std::shared_ptr<T>(ptr.get(), [ptr](T* p) mutable {
 		assert(ptr.get() == p);
 		ptr.reset();
 	});
+}
+
+Weights cgal_weights(const py::list &py_weights) {
+	Weights weights;
+	for (auto w : py_weights) {
+		weights.push_back(w.cast<double>());
+	}
+	return weights;
 }
 
 template<typename OwnerRef, typename Value>
@@ -145,11 +153,28 @@ void init_skeleton(py::module & m) {
 			Kernel::FT(max_offset), polygon, Kernel()));
 	});
 
-/*
 	sub.def("create_interior_weighted_straight_skeleton", [](
-		const Polygon_2 &polygon, double max_offset) -> Skeleton_2_Ref {
+		const Polygon_2 &polygon, const py::list &weights) -> Skeleton_2_Ref {
 		return to_std(CGAL::create_interior_weighted_straight_skeleton_2(
-			Kernel::FT(max_offset), polygon, Kernel()));
+			polygon, cgal_weights(weights), Kernel()));
+	});
+
+	sub.def("create_interior_weighted_straight_skeleton", [](
+		const Polygon_with_holes_2 &polygon, const py::list &boundary_weights, const py::list &holes_weights) -> Skeleton_2_Ref {
+		std::vector<Weights> polygons_ws;
+		polygons_ws.emplace_back(cgal_weights(boundary_weights));
+		for (auto py_weights : holes_weights) {
+			polygons_ws.emplace_back(cgal_weights(py_weights.cast<py::list>()));
+		}
+		return to_std(CGAL::create_interior_weighted_straight_skeleton_2(polygon, polygons_ws, Kernel()));
+	});
+
+	/*
+
+	sub.def("create_exterior_weighted_straight_skeleton", [](
+		const Polygon_2 &polygon, const py::list &weights, double max_offset) -> Skeleton_2_Ref {
+		return to_std(CGAL::create_exterior_weighted_straight_skeleton(
+			polygon, cgal_weights(weights), Kernel()));
 	});
 */
 }

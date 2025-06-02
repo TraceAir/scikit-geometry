@@ -37,7 +37,7 @@ PYBIND11_MODULE(_skgeom, m) {
     init_skgeom_kernel(m);
 //     init_arrangement(m);
     init_polygon(m);
-   //  init_boolean_set(m);
+    init_boolean_set(m);
     init_polygon_set(m);
     // init_convex_hull(m);
     // init_visibility(m);
