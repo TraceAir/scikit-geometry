@@ -35,19 +35,19 @@ PYBIND11_MODULE(_skgeom, m) {
 
     init_global_functions(m);
     init_skgeom_kernel(m);
-//     init_arrangement(m);
+    init_arrangement(m);
     init_polygon(m);
     init_boolean_set(m);
     init_polygon_set(m);
-    // init_convex_hull(m);
-    // init_visibility(m);
-    // init_principal_component_analysis(m);
-    // init_minkowski(m);
-    // init_polyhedron(m);
-    // init_aabb_tree(m);
-    // init_voronoi_delaunay(m);
-    // init_optimal_transport(m);
+    init_convex_hull(m);
+    init_visibility(m);
+    init_principal_component_analysis(m);
+    init_minkowski(m);
+    init_polyhedron(m);
+    init_aabb_tree(m);
+    init_voronoi_delaunay(m);
+    init_optimal_transport(m);
     // init_polygon_offset(m);
     init_skeleton(m);
-    // init_simplification(m);
+    init_simplification(m);
 }
