@@ -26,7 +26,7 @@ RUN git clone --branch ${CGAL_VERSION_TAG} --depth 1 https://github.com/CGAL/cga
     && make install | (sed -u 20q;tail -n20) \
     && rm -rf /tmp/cgal
 
-# For running tests. Move to build_wheel.sh for multiple Python versions building.
+# For running tests. Move to build_wheel_entrypoint.sh for multiple Python versions building.
 RUN python3 -m pip install --upgrade pip
 RUN python3 -m pip install pytest matplotlib IPython
 

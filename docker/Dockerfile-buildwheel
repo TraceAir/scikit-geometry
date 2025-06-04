@@ -1,23 +1,23 @@
 FROM quay.io/pypa/manylinux2014_x86_64
 
 # Install system dependencies
-RUN yum install -y \
+RUN yum -y update; yum clean all
+RUN yum -y install epel-release.noarch; yum clean all
+RUN yum -y update; yum -y install \
     gcc \
     gcc-c++ \
     cmake \
     git \
     gmp-devel \
     mpfr-devel \
-    libstdc++-devel \
     make \
-    which && \
+    curl && \
     yum clean all
 
-# Install and Boost 1.69
-RUN yum install -y boost169 boost169-devel
-RUN ln -sf /usr/include/boost169/boost /usr/include/boost && \
-    ln -s /usr/lib64/boost169/libboost_*.so /usr/lib64/
-RUN ldconfig
+RUN curl -s -SL "https://archives.boost.io/release/1.84.0/source/boost_1_84_0.tar.gz" | tar xz -C /tmp && \
+    cd /tmp/boost_1_84_0 && \
+    ./bootstrap.sh --prefix=/usr/local --with-libraries=system,filesystem,program_options,iostreams,serialization,thread,date_time,chrono && \
+    ./b2 -j 6 install && cd / && rm -rf /tmp/boost_1_84_0 && ldconfig
 
 # Install CGAL
 ARG CGAL_VERSION_TAG="v5.6"
@@ -32,7 +32,7 @@ RUN git clone --branch ${CGAL_VERSION_TAG} --depth 1 https://github.com/CGAL/cga
 # Create working directories
 RUN mkdir -p /app/output && chmod 777 /app/output
 
-# For runnint tests. Move to build_wheel.sh for multiple Python versions building.
+# For runnint tests. Move to build_wheel_entrypoint.sh for multiple Python versions building.
 ARG PYTHON_VERSION_MINOR="10"
 RUN python3.${PYTHON_VERSION_MINOR} -m pip install pytest matplotlib IPython
 
@@ -42,10 +42,10 @@ COPY skgeom/ /app/scikit-geometry/skgeom/
 COPY src/ /app/scikit-geometry/src/
 COPY test/ /app/scikit-geometry/test/
 COPY setup.py /app/scikit-geometry
-COPY docker/build_wheel.sh /app/scikit-geometry
-RUN chmod +x /app/scikit-geometry/build_wheel.sh
+COPY docker/build_wheel_entrypoint.sh /app/scikit-geometry
+RUN chmod +x /app/scikit-geometry/build_wheel_entrypoint.sh
 
 WORKDIR /app/scikit-geometry
 # Set the entrypoint
-ENTRYPOINT ["./build_wheel.sh"]
+ENTRYPOINT ["./build_wheel_entrypoint.sh"]
 
