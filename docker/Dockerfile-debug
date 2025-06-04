@@ -1,0 +1,44 @@
+FROM python:3.10-bookworm
+
+# Set environment variables to avoid interactive prompts
+ENV DEBIAN_FRONTEND=noninteractive
+ENV TZ=UTC
+
+# Update package list and install system dependencies
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    cmake \
+    git \
+    libgmp-dev \
+    libmpfr-dev \
+    wget \
+    curl \
+    libboost1.74-all-dev \
+    && apt-get clean
+
+# Install CGAL
+ARG CGAL_VERSION_TAG="v5.6"
+RUN git clone --branch ${CGAL_VERSION_TAG} --depth 1 https://github.com/CGAL/cgal.git /tmp/cgal \
+    && cd /tmp/cgal \
+    && mkdir build \
+    && cd build \
+    && cmake -DCMAKE_INSTALL_PREFIX=/usr -DCMAKE_BUILD_TYPE=Release -DCMAKE_POLICY_VERSION_MINIMUM=3.5 .. \
+    && make install | (sed -u 20q;tail -n20) \
+    && rm -rf /tmp/cgal
+
+# For running tests. Move to build_wheel_entrypoint.sh for multiple Python versions building.
+RUN python3 -m pip install --upgrade pip
+RUN python3 -m pip install pytest matplotlib IPython
+
+WORKDIR /app/scikit-geometry
+# Copy build script and set permissions
+COPY include/  /app/scikit-geometry/include/
+COPY skgeom/ /app/scikit-geometry/skgeom/
+COPY src/ /app/scikit-geometry/src/
+COPY setup.py /app/scikit-geometry
+RUN cd /app/scikit-geometry/ && python3 setup.py build_ext --inplace
+RUN cd /app/scikit-geometry/ && python3 -m pip install .
+
+COPY test/ /app/scikit-geometry/test/
+RUN python3 -m pytest test -v
+ENTRYPOINT ["/bin/bash"]

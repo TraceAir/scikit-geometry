@@ -1,6 +1,6 @@
 #!/bin/bash
 # Script to build scikit-geometry wheel using Docker
-# Usage: ./build_docker.sh [output_path] [--python_version_minor <version>] [--cgal_version_tag <tag>]
+# Usage: ./build_wheel_in_docker.sh [output_path] [--python_version_minor <version>] [--cgal_version_tag <tag>]
 
 set -xe  # Exit on error
 
