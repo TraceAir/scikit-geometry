@@ -52,6 +52,15 @@ jobs:
         python -m pip install --upgrade pip
         python -m pip install wheel setuptools pybind11 numpy pytest matplotlib
 
+    - name: Set Homebrew paths
+      run: |
+        # Get Homebrew prefix and set environment variables
+        HOMEBREW_PREFIX=$(brew --prefix)
+        echo "HOMEBREW_PREFIX=$HOMEBREW_PREFIX" >> $GITHUB_ENV
+        echo "PKG_CONFIG_PATH=$HOMEBREW_PREFIX/lib/pkgconfig:$PKG_CONFIG_PATH" >> $GITHUB_ENV
+        echo "CPPFLAGS=-I$HOMEBREW_PREFIX/include" >> $GITHUB_ENV
+        echo "LDFLAGS=-L$HOMEBREW_PREFIX/lib" >> $GITHUB_ENV
+
     - name: Install Boost
       run: |
         # Download and build Boost
@@ -88,16 +97,25 @@ jobs:
 
     - name: Build wheel
       run: |
-        # Set environment variables for the build
-        export MACOSX_DEPLOYMENT_TARGET=10.14
-        # export CPATH="/tmp/lib/boost/include:/tmp/lib/cgal/include:$CPATH"
-        # export LIBRARY_PATH="/tmp/lib/boost/lib:/tmp/lib/cgal/lib:$LIBRARY_PATH"
-        # export LD_LIBRARY_PATH="/tmp/lib/boost/lib:/tmp/lib/cgal/lib:$LD_LIBRARY_PATH"
-        export CGAL_DIR="/tmp/lib/cgal"
-        export BOOST_DIR="/tmp/lib/boost"
-        export BOOST_ROOT="/tmp/lib/boost"
-        # Build the extension in place first
-        python setup.py build_ext --inplace
+        # Add Homebrew paths to build environment
+        export CPATH="$HOMEBREW_PREFIX/include:/tmp/lib/boost/include:/tmp/lib/cgal/include:$CPATH"
+        export LIBRARY_PATH="$HOMEBREW_PREFIX/lib:/tmp/lib/boost/lib:/tmp/lib/cgal/lib:$LIBRARY_PATH"
+        export LD_LIBRARY_PATH="$HOMEBREW_PREFIX/lib:/tmp/lib/boost/lib:/tmp/lib/cgal/lib:$LD_LIBRARY_PATH"
+        
+        # Set compiler flags to include all necessary paths
+        export CPPFLAGS="-I$HOMEBREW_PREFIX/include -I/tmp/lib/cgal/include -I/tmp/lib/boost/include"
+        export LDFLAGS="-L$HOMEBREW_PREFIX/lib -L/tmp/lib/cgal/lib -L/tmp/lib/boost/lib"
+        
+        # Set additional environment variables for setup.py
+        export GMP_DIR="$HOMEBREW_PREFIX"
+        export MPFR_DIR="$HOMEBREW_PREFIX"
+        export EIGEN3_INCLUDE_DIR="$HOMEBREW_PREFIX/include/eigen3"
+        
+        # Build the extension in place first with explicit paths
+        python setup.py build_ext --inplace \
+          --include-dirs="$HOMEBREW_PREFIX/include:$HOMEBREW_PREFIX/include/eigen3:/tmp/lib/cgal/include:/tmp/lib/boost/include" \
+          --library-dirs="$HOMEBREW_PREFIX/lib:/tmp/lib/cgal/lib:/tmp/lib/boost/lib" \
+          --libraries="gmp:mpfr"
         
         # Build the wheel
         python setup.py bdist_wheel
