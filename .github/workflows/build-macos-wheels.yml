@@ -33,7 +33,9 @@ jobs:
 
     - name: Create local install directory
       run: |
-        mkdir -p $HOME/local
+        LOCAL_DIR="$HOME/local"
+        mkdir -p "$LOCAL_DIR"
+        echo "LOCAL_DIR=$LOCAL_DIR" >> $GITHUB_ENV
 
     - name: Install Homebrew dependencies
       run: |
@@ -48,11 +50,11 @@ jobs:
         python -m pip install wheel setuptools pybind11 numpy pytest matplotlib delocate
 
     - name: Install Boost
-      env:
-        BOOST_VERSION: "1.84.0"
-        BOOST_VERSION_UNDERSCORE: "1_84_0"
-        BOOST_ROOT: "$HOME/local/boost"
       run: |
+        BOOST_VERSION="1.84.0"
+        BOOST_VERSION_UNDERSCORE="1_84_0"
+        BOOST_ROOT="$LOCAL_DIR/boost"
+        
         # Download and build Boost
         cd /tmp
         curl -L -o boost_${BOOST_VERSION_UNDERSCORE}.tar.gz \
@@ -60,7 +62,7 @@ jobs:
         tar xzf boost_${BOOST_VERSION_UNDERSCORE}.tar.gz
         cd boost_${BOOST_VERSION_UNDERSCORE}
         
-        ./bootstrap.sh --prefix=${BOOST_ROOT} \
+        ./bootstrap.sh --prefix="$BOOST_ROOT" \
           --with-libraries=system,filesystem,program_options,iostreams,serialization,thread,date_time,chrono,atomic
         
         ./b2 -j$(sysctl -n hw.ncpu) install
@@ -68,18 +70,20 @@ jobs:
         # Clean up
         cd /
         rm -rf /tmp/boost_${BOOST_VERSION_UNDERSCORE}*
+        
+        echo "BOOST_ROOT=$BOOST_ROOT" >> $GITHUB_ENV
 
     - name: Install CGAL
-      env:
-        CGAL_ROOT: "$HOME/local/cgal"
       run: |
+        CGAL_ROOT="$LOCAL_DIR/cgal"
+        
         # Clone and build CGAL
         cd /tmp
         git clone --branch ${{ github.event.inputs.cgal_version }} --depth 1 https://github.com/CGAL/cgal.git
         cd cgal
         mkdir build && cd build
         
-        cmake -DCMAKE_INSTALL_PREFIX=${CGAL_ROOT} \
+        cmake -DCMAKE_INSTALL_PREFIX="$CGAL_ROOT" \
               -DCMAKE_BUILD_TYPE=Release \
               -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
               ..
@@ -89,20 +93,22 @@ jobs:
         # Clean up
         cd /
         rm -rf /tmp/cgal
+        
+        echo "CGAL_DIR=$CGAL_ROOT/lib/cmake/CGAL" >> $GITHUB_ENV
 
     - name: Build wheel
-      env:
-        BOOST_ROOT: "$HOME/local/boost"
-        CGAL_DIR: "$HOME/local/cgal/lib/cmake/CGAL"
       run: |
         export MACOSX_DEPLOYMENT_TARGET=10.14
-        export PATH="$HOME/local/boost/bin:$PATH"
-        export CPATH="$HOME/local/boost/include:$HOME/local/cgal/include:$CPATH"
-        export LIBRARY_PATH="$HOME/local/boost/lib:$HOME/local/cgal/lib:$LIBRARY_PATH"
-        export LD_LIBRARY_PATH="$HOME/local/boost/lib:$HOME/local/cgal/lib:$LD_LIBRARY_PATH"
+        export PATH="$BOOST_ROOT/bin:$PATH"
+        export CPATH="$BOOST_ROOT/include:$CGAL_ROOT/include:$CPATH"
+        export LIBRARY_PATH="$BOOST_ROOT/lib:$CGAL_ROOT/lib:$LIBRARY_PATH"
+        export LD_LIBRARY_PATH="$BOOST_ROOT/lib:$CGAL_ROOT/lib:$LD_LIBRARY_PATH"
         
-        # Verify CGAL headers are found
-        ls -la $HOME/local/cgal/include/CGAL
+        # Verify paths
+        echo "BOOST_ROOT: $BOOST_ROOT"
+        ls -la "$BOOST_ROOT/include"
+        echo "CGAL_ROOT: $CGAL_ROOT"
+        ls -la "$CGAL_ROOT/include/CGAL"
         
         python setup.py bdist_wheel
 
