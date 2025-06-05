@@ -66,15 +66,9 @@ jobs:
         cd /tmp/cgal/
         mkdir build && cd build
         
-        cmake  \
-              -DCMAKE_BUILD_TYPE=Release \
-              -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
-              -DWITH_CGAL_Qt5=OFF -DWITH_CGAL_Qt3=OFF -DWITH_CGAL_Qt4=OFF -DWITH_CGAL_Qt3=false -DWITH_CGAL_Qt4=false -DWITH_CGAL_Qt5=false \
-              -DWITH_CGAL_ImageIO=OFF -DWITH_demos=OFF -WITH_examples=OFF \
-              -DCGAL_HEADER_ONLY=ON \
-              ..
+        cmake -DCMAKE_INSTALL_PREFIX=/tmp/lib/cgal -DCMAKE_BUILD_TYPE=Release -DCMAKE_POLICY_VERSION_MINIMUM=3.5 ..
         
-        make -j$(sysctl -n hw.ncpu) install
+        make install
         
         # Clean up
         cd /
