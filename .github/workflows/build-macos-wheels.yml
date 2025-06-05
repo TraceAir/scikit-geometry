@@ -46,7 +46,7 @@ jobs:
         brew update
         
         # Install system dependencies
-        brew install cmake gmp mpfr eigen boost qt@5
+        brew install cmake gmp mpfr eigen qt@5
         
         # Install Python build dependencies
         python -m pip install --upgrade pip
@@ -54,9 +54,21 @@ jobs:
 
     - name: Install Boost
       run: |
-        # Boost is already installed via Homebrew, just verify
-        echo "Boost installed via Homebrew"
-        ls -la /opt/homebrew/include/boost/ || ls -la /usr/local/include/boost/ || echo "Boost headers location unknown"
+        # Download and build Boost
+        cd /tmp
+        curl -L -o boost_${BOOST_VERSION_UNDERSCORE}.tar.gz \
+          "https://archives.boost.io/release/${BOOST_VERSION}/source/boost_${BOOST_VERSION_UNDERSCORE}.tar.gz"
+        tar xzf boost_${BOOST_VERSION_UNDERSCORE}.tar.gz
+        cd boost_${BOOST_VERSION_UNDERSCORE}
+        
+        ./bootstrap.sh --prefix=/tmp/lib/boost \
+          --with-libraries=system,filesystem,program_options,iostreams,serialization,thread,date_time,chrono,atomic
+        
+        ./b2 -j$(sysctl -n hw.ncpu) install
+        
+        # Clean up
+        cd /
+        rm -rf /tmp/boost_${BOOST_VERSION_UNDERSCORE}*
 
     - name: Install CGAL
       run: |
@@ -78,10 +90,11 @@ jobs:
       run: |
         # Set environment variables for the build
         export MACOSX_DEPLOYMENT_TARGET=10.14
-        export CPATH="/tmp/lib/cgal/include:$CPATH"
-        export LIBRARY_PATH="/tmp/lib/cgal/lib:$LIBRARY_PATH"
-        export LD_LIBRARY_PATH="/tmp/lib/cgal/lib:$LD_LIBRARY_PATH"
+        export CPATH="/tmp/lib/boost/include:/tmp/lib/cgal/include:$CPATH"
+        export LIBRARY_PATH="/tmp/lib/boost/lib:/tmp/lib/cgal/lib:$LIBRARY_PATH"
+        export LD_LIBRARY_PATH="/tmp/lib/boost/lib:/tmp/lib/cgal/lib:$LD_LIBRARY_PATH"
         export CGAL_DIR="/tmp/lib/cgal"
+        export BOOST_DIR="/tmp/lib/cgal"
         # Build the extension in place first
         python setup.py build_ext --inplace
         
