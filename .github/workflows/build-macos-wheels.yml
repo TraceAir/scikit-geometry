@@ -68,7 +68,7 @@ jobs:
         cmake  \
               -DCMAKE_BUILD_TYPE=Release \
               -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
-              -DWITH_CGAL_Qt5=OFF\
+              -DWITH_CGAL_Qt5=OFF DWITH_CGAL_Qt3=OFF -DWITH_CGAL_ImageIO=OFF -DWITH_demos=OFF WITH_examples=OFF \
               -DCGAL_HEADER_ONLY=ON \
               ..
         
