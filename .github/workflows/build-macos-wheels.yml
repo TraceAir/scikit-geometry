@@ -61,12 +61,11 @@ jobs:
     - name: Install CGAL
       run: |
         # Clone and build CGAL
-        cd /tmp
-        git clone --branch ${CGAL_VERSION} --depth 1 https://github.com/CGAL/cgal.git
-        cd cgal
+        git clone --branch ${CGAL_VERSION} --depth 1 https://github.com/CGAL/cgal.git /tmp/cgal/
+        cd /tmp/cgal/
         mkdir build && cd build
         
-        cmake -DCMAKE_INSTALL_PREFIX=/usr/local \
+        cmake  \
               -DCMAKE_BUILD_TYPE=Release \
               -DCMAKE_POLICY_VERSION_MINIMUM=3.5 
               -DWITH_CGAL_Qt5=OFF\
