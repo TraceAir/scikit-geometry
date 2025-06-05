@@ -24,7 +24,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [macos-11, macos-12, macos-13]
-        python-version: ['3.8', '3.9', '3.10', '3.11', '3.12']
+        python-version: ['3.9', '3.10']
         exclude:
           # macOS 13 doesn't support Python 3.8
           - os: macos-13

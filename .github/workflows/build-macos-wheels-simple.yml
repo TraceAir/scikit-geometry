@@ -1,0 +1,50 @@
+name: Build macOS Wheels (Simple)
+
+on:
+  workflow_dispatch:
+    inputs:
+      python_version:
+        description: 'Python version'
+        required: true
+        default: '3.10'
+        type: choice
+        options:
+        - '3.9'
+        - '3.10'
+
+jobs:
+  build-macos:
+    runs-on: macos-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ github.event.inputs.python_version }}
+
+    - name: Install dependencies
+      run: |
+        brew install cmake gmp mpfr boost cgal
+        python -m pip install --upgrade pip wheel setuptools pybind11 numpy pytest delocate
+
+    - name: Build wheel
+      run: |
+        export MACOSX_DEPLOYMENT_TARGET=10.14
+        python setup.py bdist_wheel
+
+    - name: Test wheel
+      run: |
+        pip install dist/*.whl
+        python -m pytest test -v
+
+    - name: Repair wheel
+      run: |
+        delocate-wheel -w dist/repaired/ dist/*.whl
+
+    - name: Upload wheel
+      uses: actions/upload-artifact@v3
+      with:
+        name: macos-wheel-py${{ github.event.inputs.python_version }}
+        path: dist/repaired/*.whl
