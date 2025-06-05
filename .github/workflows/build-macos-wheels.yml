@@ -97,6 +97,12 @@ jobs:
 
     - name: Build wheel
       run: |
+        # Set environment variables for the build
+        export MACOSX_DEPLOYMENT_TARGET=10.14
+        export CGAL_DIR="/tmp/lib/cgal"
+        export BOOST_DIR="/tmp/lib/boost"
+        export BOOST_ROOT="/tmp/lib/boost"
+        
         # Add Homebrew paths to build environment
         export CPATH="$HOMEBREW_PREFIX/include:/tmp/lib/boost/include:/tmp/lib/cgal/include:$CPATH"
         export LIBRARY_PATH="$HOMEBREW_PREFIX/lib:/tmp/lib/boost/lib:/tmp/lib/cgal/lib:$LIBRARY_PATH"
@@ -104,7 +110,7 @@ jobs:
         
         # Set compiler flags to include all necessary paths
         export CPPFLAGS="-I$HOMEBREW_PREFIX/include -I/tmp/lib/cgal/include -I/tmp/lib/boost/include"
-        export LDFLAGS="-L$HOMEBREW_PREFIX/lib -L/tmp/lib/cgal/lib -L/tmp/lib/boost/lib"
+        export LDFLAGS="-L$HOMEBREW_PREFIX/lib -L/tmp/lib/cgal/lib -L/tmp/lib/boost/lib -lgmp -lmpfr"
         
         # Set additional environment variables for setup.py
         export GMP_DIR="$HOMEBREW_PREFIX"
