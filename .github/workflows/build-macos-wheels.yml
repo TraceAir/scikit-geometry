@@ -23,12 +23,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-13]
+        os: [macos-15]
         python-version: ['3.10']
-        exclude:
-          # macOS 13 doesn't support Python 3.8
-          - os: macos-13
-            python-version: '3.8'
 
     env:
       CGAL_VERSION: ${{ github.event.inputs.cgal_version || 'v5.6' }}
@@ -50,7 +46,7 @@ jobs:
         brew update
         
         # Install system dependencies
-        brew install cmake gmp mpfr eigen cgal@5.6 boost
+        brew install cmake gmp mpfr eigen cgal boost
         
         # Install Python build dependencies
         python -m pip install --upgrade pip
@@ -64,27 +60,23 @@ jobs:
 
     - name: Install CGAL
       run: |
-        # CGAL is already installed via Homebrew, just verify and set up environment
-        echo "CGAL installed via Homebrew"
+        # Clone and build CGAL
+        cd /tmp
+        git clone --branch ${CGAL_VERSION} --depth 1 https://github.com/CGAL/cgal.git
+        cd cgal
+        mkdir build && cd build
         
-        # Find CGAL installation paths
-        if [ -d "/opt/homebrew/include/CGAL" ]; then
-          CGAL_INCLUDE_DIR="/opt/homebrew/include"
-          CGAL_LIB_DIR="/opt/homebrew/lib"
-        elif [ -d "/usr/local/include/CGAL" ]; then
-          CGAL_INCLUDE_DIR="/usr/local/include"
-          CGAL_LIB_DIR="/usr/local/lib"
-        else
-          echo "CGAL headers not found!"
-          find /opt/homebrew /usr/local -name "CGAL" -type d 2>/dev/null || true
-          exit 1
-        fi
+        cmake -DCMAKE_INSTALL_PREFIX=/usr/local \
+              -DCMAKE_BUILD_TYPE=Release \
+              -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
+              -DCGAL_HEADER_ONLY=ON \
+              ..
         
-        echo "CGAL_INCLUDE_DIR=$CGAL_INCLUDE_DIR" >> $GITHUB_ENV
-        echo "CGAL_LIB_DIR=$CGAL_LIB_DIR" >> $GITHUB_ENV
+        make -j$(sysctl -n hw.ncpu) install
         
-        # Verify CGAL installation
-        ls -la "$CGAL_INCLUDE_DIR/CGAL/" | head -10
+        # Clean up
+        cd /
+        rm -rf /tmp/cgal
 
     - name: Build wheel
       run: |
