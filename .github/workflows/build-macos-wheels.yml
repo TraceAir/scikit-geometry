@@ -90,9 +90,9 @@ jobs:
       run: |
         # Set environment variables for the build
         export MACOSX_DEPLOYMENT_TARGET=10.14
-        export CPATH="/tmp/lib/boost/include:/tmp/lib/cgal/include:$CPATH"
-        export LIBRARY_PATH="/tmp/lib/boost/lib:/tmp/lib/cgal/lib:$LIBRARY_PATH"
-        export LD_LIBRARY_PATH="/tmp/lib/boost/lib:/tmp/lib/cgal/lib:$LD_LIBRARY_PATH"
+#        export CPATH="/tmp/lib/boost/include:/tmp/lib/cgal/include:$CPATH"
+#        export LIBRARY_PATH="/tmp/lib/boost/lib:/tmp/lib/cgal/lib:$LIBRARY_PATH"
+#        export LD_LIBRARY_PATH="/tmp/lib/boost/lib:/tmp/lib/cgal/lib:$LD_LIBRARY_PATH"
         export CGAL_DIR="/tmp/lib/cgal"
         export BOOST_DIR="/tmp/lib/boost"
         export BOOST_ROOT="/tmp/lib/boost"
