@@ -46,7 +46,7 @@ jobs:
         brew update
         
         # Install system dependencies
-        brew install cmake gmp mpfr eigen qt@5
+        brew install cmake gmp mpfr eigen
         
         # Install Python build dependencies
         python -m pip install --upgrade pip
@@ -94,7 +94,8 @@ jobs:
         export LIBRARY_PATH="/tmp/lib/boost/lib:/tmp/lib/cgal/lib:$LIBRARY_PATH"
         export LD_LIBRARY_PATH="/tmp/lib/boost/lib:/tmp/lib/cgal/lib:$LD_LIBRARY_PATH"
         export CGAL_DIR="/tmp/lib/cgal"
-        export BOOST_DIR="/tmp/lib/cgal"
+        export BOOST_DIR="/tmp/lib/boost"
+        export BOOST_ROOT="/tmp/lib/boost"
         # Build the extension in place first
         python setup.py build_ext --inplace
         
