@@ -133,14 +133,6 @@ jobs:
         # Build the wheel
         python setup.py bdist_wheel
 
-    - name: Run tests
-      run: |
-        # Install the wheel for testing
-        pip install dist/*.whl
-        
-        # Run tests
-        python -m pytest test -v
-
     - name: Repair wheel with delocate
       run: |
         # Install delocate for wheel repair
@@ -148,6 +140,14 @@ jobs:
         
         # Repair the wheel (bundle dependencies)
         delocate-wheel -w dist/repaired/ dist/*.whl
+
+    - name: Run tests
+      run: |
+        # Install the wheel for testing
+        pip install dist/repaired/*.whl
+        
+        # Run tests
+        python -m pytest test -v
 
     - name: Upload wheels as artifacts
       uses: actions/upload-artifact@v4
