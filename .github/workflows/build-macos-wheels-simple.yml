@@ -31,10 +31,38 @@ jobs:
       with:
         python-version: ${{ github.event.inputs.python_version }}
 
-    - name: Install dependencies
+    - name: Install Homebrew dependencies
       run: |
-        brew install cmake gmp mpfr boost
-        python -m pip install --upgrade pip wheel setuptools pybind11 numpy pytest delocate
+        # Update Homebrew
+        brew update
+        
+        # Install system dependencies
+        brew install cmake gmp mpfr eigen
+        
+        # Install Python build dependencies
+        python -m pip install --upgrade pip
+        python -m pip install wheel setuptools pybind11 numpy pytest matplotlib
+
+    - name: Install Boost
+      env:
+        BOOST_VERSION: "1.84.0"
+        BOOST_VERSION_UNDERSCORE: "1_84_0"
+      run: |
+        # Download and build Boost
+        cd /tmp
+        curl -L -o boost_${BOOST_VERSION_UNDERSCORE}.tar.gz \
+          "https://archives.boost.io/release/${BOOST_VERSION}/source/boost_${BOOST_VERSION_UNDERSCORE}.tar.gz"
+        tar xzf boost_${BOOST_VERSION_UNDERSCORE}.tar.gz
+        cd boost_${BOOST_VERSION_UNDERSCORE}
+        
+        ./bootstrap.sh --prefix=/usr/local \
+          --with-libraries=system,filesystem,program_options,iostreams,serialization,thread,date_time,chrono,atomic
+        
+        ./b2 -j$(sysctl -n hw.ncpu) install
+        
+        # Clean up
+        cd /
+        rm -rf /tmp/boost_${BOOST_VERSION_UNDERSCORE}*
 
     - name: Install CGAL
       run: |
@@ -47,10 +75,9 @@ jobs:
         cmake -DCMAKE_INSTALL_PREFIX=/usr/local \
               -DCMAKE_BUILD_TYPE=Release \
               -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
-              -DCGAL_HEADER_ONLY=ON \
               ..
         
-        make -j$(sysctl -n hw.ncpu) install
+        make install | (sed -u 20q;tail -n20)
         
         # Clean up
         cd /

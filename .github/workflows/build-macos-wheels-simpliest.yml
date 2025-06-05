@@ -1,4 +1,4 @@
-name: Build macOS Wheels (Simple)
+name: Build macOS Wheels (Simplest)
 
 on:
   workflow_dispatch:
