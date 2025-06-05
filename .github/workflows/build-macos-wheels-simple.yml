@@ -1,0 +1,125 @@
+name: Build macOS Wheels (Simple)
+
+on:
+  workflow_dispatch:
+    inputs:
+      python_version:
+        description: 'Python version'
+        required: true
+        default: '3.10'
+        type: choice
+        options:
+        - '3.8'
+        - '3.9'
+        - '3.10'
+        - '3.11'
+        - '3.12'
+      cgal_version:
+        description: 'CGAL version tag'
+        required: false
+        default: 'v5.6'
+
+jobs:
+  build-macos:
+    runs-on: macos-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ github.event.inputs.python_version }}
+
+    - name: Create local install directory
+      run: |
+        LOCAL_DIR="$HOME/local"
+        mkdir -p "$LOCAL_DIR"
+        echo "LOCAL_DIR=$LOCAL_DIR" >> $GITHUB_ENV
+
+    - name: Install Homebrew dependencies
+      run: |
+        brew update
+        brew install cmake gmp mpfr eigen
+        python -m pip install --upgrade pip
+        python -m pip install wheel setuptools pybind11 numpy pytest matplotlib delocate
+
+    - name: Install Boost
+      run: |
+        BOOST_VERSION="1.84.0"
+        BOOST_VERSION_UNDERSCORE="1_84_0"
+        BOOST_ROOT="$LOCAL_DIR/boost"
+        
+        echo "Installing Boost $BOOST_VERSION to $BOOST_ROOT"
+        
+        # Download Boost (using correct URL)
+        cd /tmp
+        curl -L -o boost_${BOOST_VERSION_UNDERSCORE}.tar.gz \
+          "https://boostorg.jfrog.io/artifactory/main/release/${BOOST_VERSION}/source/boost_${BOOST_VERSION_UNDERSCORE}.tar.gz"
+        
+        # Verify download
+        file boost_${BOOST_VERSION_UNDERSCORE}.tar.gz
+        tar -tzf boost_${BOOST_VERSION_UNDERSCORE}.tar.gz | head
+        
+        # Extract and build
+        tar xzf boost_${BOOST_VERSION_UNDERSCORE}.tar.gz
+        cd boost_${BOOST_VERSION_UNDERSCORE}
+        
+        ./bootstrap.sh --prefix="$BOOST_ROOT" \
+          --with-libraries=system,filesystem,program_options,iostreams,serialization,thread,date_time,chrono,atomic
+        
+        ./b2 -j$(sysctl -n hw.ncpu) install
+        
+        # Clean up
+        cd /
+        rm -rf /tmp/boost_${BOOST_VERSION_UNDERSCORE}*
+        
+        echo "BOOST_ROOT=$BOOST_ROOT" >> $GITHUB_ENV
+
+    - name: Install CGAL
+      run: |
+        CGAL_ROOT="$LOCAL_DIR/cgal"
+        echo "Installing CGAL to $CGAL_ROOT"
+        
+        cd /tmp
+        git clone --branch ${{ github.event.inputs.cgal_version }} --depth 1 https://github.com/CGAL/cgal.git
+        cd cgal
+        mkdir build && cd build
+        
+        cmake -DCMAKE_INSTALL_PREFIX="$CGAL_ROOT" \
+              -DCMAKE_BUILD_TYPE=Release \
+              -DCGAL_HEADER_ONLY=ON \
+              ..
+        
+        make install
+        
+        cd /
+        rm -rf /tmp/cgal
+        
+        echo "CGAL_ROOT=$CGAL_ROOT" >> $GITHUB_ENV
+        echo "CGAL_DIR=$CGAL_ROOT/lib/cmake/CGAL" >> $GITHUB_ENV
+
+    - name: Build wheel
+      run: |
+        export MACOSX_DEPLOYMENT_TARGET=10.14
+        export PATH="$BOOST_ROOT/bin:$PATH"
+        export CPATH="$BOOST_ROOT/include:$CGAL_ROOT/include:$CPATH"
+        export LIBRARY_PATH="$BOOST_ROOT/lib:$CGAL_ROOT/lib:$LIBRARY_PATH"
+        export LD_LIBRARY_PATH="$BOOST_ROOT/lib:$CGAL_ROOT/lib:$LD_LIBRARY_PATH"
+        
+        python setup.py bdist_wheel
+
+    - name: Test wheel
+      run: |
+        pip install dist/*.whl
+        python -m pytest test -v
+
+    - name: Repair wheel
+      run: |
+        delocate-wheel -w dist/repaired/ dist/*.whl
+
+    - name: Upload wheel
+      uses: actions/upload-artifact@v4
+      with:
+        name: macos-wheel-py${{ github.event.inputs.python_version }}
+        path: dist/repaired/*.whl
