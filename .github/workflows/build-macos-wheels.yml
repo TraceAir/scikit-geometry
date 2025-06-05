@@ -78,26 +78,10 @@ jobs:
       run: |
         # Set environment variables for the build
         export MACOSX_DEPLOYMENT_TARGET=10.14
-        export CMAKE_OSX_DEPLOYMENT_TARGET=10.14
-        
-        # Set up include and library paths
-        if [ -d "/opt/homebrew" ]; then
-          # Apple Silicon Mac
-          export CPPFLAGS="-I/opt/homebrew/include $CPPFLAGS"
-          export LDFLAGS="-L/opt/homebrew/lib $LDFLAGS"
-          export PKG_CONFIG_PATH="/opt/homebrew/lib/pkgconfig:$PKG_CONFIG_PATH"
-        else
-          # Intel Mac
-          export CPPFLAGS="-I/usr/local/include $CPPFLAGS"
-          export LDFLAGS="-L/usr/local/lib $LDFLAGS"
-          export PKG_CONFIG_PATH="/usr/local/lib/pkgconfig:$PKG_CONFIG_PATH"
-        fi
-        
-        # Debug: Show what CGAL files are available
-        echo "CGAL headers check:"
-        find /opt/homebrew/include /usr/local/include -name "*CGAL*" -type d 2>/dev/null | head -5
-        find /opt/homebrew/include /usr/local/include -name "Exact_predicates_exact_constructions_kernel.h" 2>/dev/null || echo "CGAL kernel header not found"
-        
+        export CPATH="/tmp/lib/cgal/include:$CPATH"
+        export LIBRARY_PATH="/tmp/lib/cgal/lib:$LIBRARY_PATH"
+        export LD_LIBRARY_PATH="/tmp/lib/cgal/lib:$LD_LIBRARY_PATH"
+        export CGAL_DIR="/tmp/lib/cgal"
         # Build the extension in place first
         python setup.py build_ext --inplace
         
