@@ -46,7 +46,7 @@ jobs:
         brew update
         
         # Install system dependencies
-        brew install cmake gmp mpfr eigen cgal boost
+        brew install cmake gmp mpfr eigen qt6 boost
         
         # Install Python build dependencies
         python -m pip install --upgrade pip
