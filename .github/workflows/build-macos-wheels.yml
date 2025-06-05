@@ -132,9 +132,7 @@ jobs:
         
         # Build the wheel
         python setup.py bdist_wheel
-
-    - name: Repair wheel with delocate
-      run: |
+        
         # Install delocate for wheel repair
         pip install delocate
         
