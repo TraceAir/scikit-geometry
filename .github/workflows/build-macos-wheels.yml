@@ -45,7 +45,7 @@ jobs:
         
         # Install Python build dependencies
         python -m pip install --upgrade pip
-        python -m pip install wheel setuptools pybind11 numpy pytest matplotlib
+        python -m pip install wheel setuptools pybind11 numpy pytest matplotlib delocate
 
     - name: Install Boost
       env:
@@ -84,7 +84,7 @@ jobs:
               -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
               ..
         
-        make install | (sed -u 20q;tail -n20)
+        make install
         
         # Clean up
         cd /
@@ -97,9 +97,13 @@ jobs:
       run: |
         export MACOSX_DEPLOYMENT_TARGET=10.14
         export PATH="$HOME/local/boost/bin:$PATH"
-        export LD_LIBRARY_PATH="$HOME/local/boost/lib:$HOME/local/cgal/lib:$LD_LIBRARY_PATH"
         export CPATH="$HOME/local/boost/include:$HOME/local/cgal/include:$CPATH"
         export LIBRARY_PATH="$HOME/local/boost/lib:$HOME/local/cgal/lib:$LIBRARY_PATH"
+        export LD_LIBRARY_PATH="$HOME/local/boost/lib:$HOME/local/cgal/lib:$LD_LIBRARY_PATH"
+        
+        # Verify CGAL headers are found
+        ls -la $HOME/local/cgal/include/CGAL
+        
         python setup.py bdist_wheel
 
     - name: Test wheel
