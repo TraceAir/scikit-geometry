@@ -160,6 +160,8 @@ jobs:
         # Install delocate for wheel repair
         pip install delocate
         
+        set -x
+        
         # Create repaired directory
         mkdir -p dist/repaired/
         
@@ -226,3 +228,13 @@ jobs:
         # Clean up
         rm -rf temp_wheel/
         cd ..
+
+    - name: Upload wheel artifacts
+      uses: actions/upload-artifact@v4
+      if: always()  # Upload even if tests fail
+      with:
+        name: macos-wheels-py${{ matrix.python-version }}-${{ matrix.os }}
+        path: |
+          dist/repaired/*.whl
+          dist/*.whl
+        retention-days: 90
