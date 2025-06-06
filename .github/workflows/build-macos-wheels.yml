@@ -23,7 +23,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-12]  # Use macos-12 for better compatibility
+        os: [macos-13]  # Use macos-12 for better compatibility
         python-version: ['3.10']
 
     env:
@@ -31,7 +31,7 @@ jobs:
       BOOST_VERSION: "1.84.0"
       BOOST_VERSION_UNDERSCORE: "1_84_0"
       # Set deployment target to match available libraries
-      MACOSX_DEPLOYMENT_TARGET: "12.0"
+      MACOSX_DEPLOYMENT_TARGET: "13.0"
 
     steps:
     - name: Checkout code
