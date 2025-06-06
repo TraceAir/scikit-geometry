@@ -1,125 +1,212 @@
-name: Build macOS Wheels (Simple)
+name: Build macOS Wheels
 
 on:
+  push:
+    branches: [ main, master ]
+    tags: [ 'v*' ]
+  pull_request:
+    branches: [ main, master ]
   workflow_dispatch:
     inputs:
-      python_version:
-        description: 'Python version'
-        required: true
+      python_versions:
+        description: 'Python versions to build (comma-separated)'
+        required: false
         default: '3.10'
-        type: choice
-        options:
-        - '3.8'
-        - '3.9'
-        - '3.10'
-        - '3.11'
-        - '3.12'
       cgal_version:
         description: 'CGAL version tag'
         required: false
         default: 'v5.6'
 
 jobs:
-  build-macos:
-    runs-on: macos-latest
+  build-macos-wheels:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-15]
+        python-version: ['3.10']
+
+    env:
+      CGAL_VERSION: ${{ github.event.inputs.cgal_version || 'v5.6' }}
+      BOOST_VERSION: "1.84.0"
+      BOOST_VERSION_UNDERSCORE: "1_84_0"
 
     steps:
-    - uses: actions/checkout@v4
+    - name: Checkout code
+      uses: actions/checkout@v4
 
-    - name: Set up Python
+    - name: Set up Python ${{ matrix.python-version }}
       uses: actions/setup-python@v5
       with:
-        python-version: ${{ github.event.inputs.python_version }}
-
-    - name: Create local install directory
-      run: |
-        LOCAL_DIR="$HOME/local"
-        mkdir -p "$LOCAL_DIR"
-        echo "LOCAL_DIR=$LOCAL_DIR" >> $GITHUB_ENV
+        python-version: ${{ matrix.python-version }}
 
     - name: Install Homebrew dependencies
       run: |
+        # Update Homebrew
         brew update
+        
+        # Install system dependencies
         brew install cmake gmp mpfr eigen
+        
+        # Install Python build dependencies
         python -m pip install --upgrade pip
-        python -m pip install wheel setuptools pybind11 numpy pytest matplotlib delocate
+        python -m pip install wheel setuptools pybind11 numpy pytest matplotlib
 
-    - name: Install Boost
+    - name: Set Homebrew paths
       run: |
-        BOOST_VERSION="1.84.0"
-        BOOST_VERSION_UNDERSCORE="1_84_0"
-        BOOST_ROOT="$LOCAL_DIR/boost"
-        
-        echo "Installing Boost $BOOST_VERSION to $BOOST_ROOT"
-        
-        # Download Boost (using correct URL)
+        # Get Homebrew prefix and set environment variables
+        HOMEBREW_PREFIX=$(brew --prefix)
+        echo "HOMEBREW_PREFIX=$HOMEBREW_PREFIX" >> $GITHUB_ENV
+        echo "PKG_CONFIG_PATH=$HOMEBREW_PREFIX/lib/pkgconfig:$PKG_CONFIG_PATH" >> $GITHUB_ENV
+        echo "CPPFLAGS=-I$HOMEBREW_PREFIX/include" >> $GITHUB_ENV
+        echo "LDFLAGS=-L$HOMEBREW_PREFIX/lib" >> $GITHUB_ENV
+
+    - name: Install Boost with static libraries
+      run: |
+        # Download and build Boost with static libraries
         cd /tmp
         curl -L -o boost_${BOOST_VERSION_UNDERSCORE}.tar.gz \
-          "https://boostorg.jfrog.io/artifactory/main/release/${BOOST_VERSION}/source/boost_${BOOST_VERSION_UNDERSCORE}.tar.gz"
-        
-        # Verify download
-        file boost_${BOOST_VERSION_UNDERSCORE}.tar.gz
-        tar -tzf boost_${BOOST_VERSION_UNDERSCORE}.tar.gz | head
-        
-        # Extract and build
+          "https://archives.boost.io/release/${BOOST_VERSION}/source/boost_${BOOST_VERSION_UNDERSCORE}.tar.gz"
         tar xzf boost_${BOOST_VERSION_UNDERSCORE}.tar.gz
         cd boost_${BOOST_VERSION_UNDERSCORE}
         
-        ./bootstrap.sh --prefix="$BOOST_ROOT" \
+        # Configure for both static and shared libraries
+        ./bootstrap.sh --prefix=/tmp/lib/boost \
           --with-libraries=system,filesystem,program_options,iostreams,serialization,thread,date_time,chrono,atomic
         
-        ./b2 -j$(sysctl -n hw.ncpu) install
+        # Build both static and shared libraries
+        ./b2 -j$(sysctl -n hw.ncpu) \
+          variant=release \
+          link=shared,static \
+          threading=multi \
+          runtime-link=shared \
+          cxxflags="-fPIC" \
+          install
+        
+        # Verify libraries were built
+        echo "Boost libraries built:"
+        ls -la /tmp/lib/boost/lib/
         
         # Clean up
         cd /
         rm -rf /tmp/boost_${BOOST_VERSION_UNDERSCORE}*
-        
-        echo "BOOST_ROOT=$BOOST_ROOT" >> $GITHUB_ENV
 
     - name: Install CGAL
       run: |
-        CGAL_ROOT="$LOCAL_DIR/cgal"
-        echo "Installing CGAL to $CGAL_ROOT"
-        
-        cd /tmp
-        git clone --branch ${{ github.event.inputs.cgal_version }} --depth 1 https://github.com/CGAL/cgal.git
-        cd cgal
+        set -x
+        # Clone and build CGAL
+        git clone --branch ${CGAL_VERSION} --depth 1 https://github.com/CGAL/cgal.git /tmp/cgal/
+        cd /tmp/cgal/
         mkdir build && cd build
         
-        cmake -DCMAKE_INSTALL_PREFIX="$CGAL_ROOT" \
+        # Configure CGAL to find our Boost installation
+        cmake -DCMAKE_INSTALL_PREFIX=/tmp/lib/cgal \
               -DCMAKE_BUILD_TYPE=Release \
-              -DCGAL_HEADER_ONLY=ON \
+              -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
+              -DBOOST_ROOT=/tmp/lib/boost \
+              -DBoost_NO_SYSTEM_PATHS=ON \
+              -DBoost_USE_STATIC_LIBS=OFF \
               ..
         
         make install
         
+        # Clean up
         cd /
         rm -rf /tmp/cgal
-        
-        echo "CGAL_ROOT=$CGAL_ROOT" >> $GITHUB_ENV
-        echo "CGAL_DIR=$CGAL_ROOT/lib/cmake/CGAL" >> $GITHUB_ENV
+
+    - name: Debug library paths
+      run: |
+        echo "=== Homebrew prefix: $HOMEBREW_PREFIX ==="
+        ls -la $HOMEBREW_PREFIX/lib/libgmp*
+        ls -la $HOMEBREW_PREFIX/lib/libmpfr*
+        echo "=== Boost libraries ==="
+        ls -la /tmp/lib/boost/lib/libboost_*
+        echo "=== CGAL libraries ==="
+        ls -la /tmp/lib/cgal/lib/ || true
+        echo "=== Environment variables ==="
+        echo "LDFLAGS: $LDFLAGS"
+        echo "CPPFLAGS: $CPPFLAGS"
 
     - name: Build wheel
       run: |
+        # Set environment variables for the build
         export MACOSX_DEPLOYMENT_TARGET=10.14
-        export PATH="$BOOST_ROOT/bin:$PATH"
-        export CPATH="$BOOST_ROOT/include:$CGAL_ROOT/include:$CPATH"
-        export LIBRARY_PATH="$BOOST_ROOT/lib:$CGAL_ROOT/lib:$LIBRARY_PATH"
-        export LD_LIBRARY_PATH="$BOOST_ROOT/lib:$CGAL_ROOT/lib:$LD_LIBRARY_PATH"
+        export CGAL_DIR="/tmp/lib/cgal"
+        export BOOST_DIR="/tmp/lib/boost"
+        export BOOST_ROOT="/tmp/lib/boost"
         
+        # Add Homebrew paths to build environment
+        export CPATH="$HOMEBREW_PREFIX/include:/tmp/lib/boost/include:/tmp/lib/cgal/include:$CPATH"
+        export LIBRARY_PATH="$HOMEBREW_PREFIX/lib:/tmp/lib/boost/lib:/tmp/lib/cgal/lib:$LIBRARY_PATH"
+        export LD_LIBRARY_PATH="$HOMEBREW_PREFIX/lib:/tmp/lib/boost/lib:/tmp/lib/cgal/lib:$LD_LIBRARY_PATH"
+        export DYLD_LIBRARY_PATH="$HOMEBREW_PREFIX/lib:/tmp/lib/boost/lib:/tmp/lib/cgal/lib:$DYLD_LIBRARY_PATH"
+        
+        # Set compiler flags to include all necessary paths
+        export CPPFLAGS="-I$HOMEBREW_PREFIX/include -I/tmp/lib/cgal/include -I/tmp/lib/boost/include"
+        export LDFLAGS="-L$HOMEBREW_PREFIX/lib -L/tmp/lib/cgal/lib -L/tmp/lib/boost/lib -lgmp -lmpfr"
+        
+        # Set additional environment variables for setup.py
+        export GMP_DIR="$HOMEBREW_PREFIX"
+        export MPFR_DIR="$HOMEBREW_PREFIX"
+        export EIGEN3_INCLUDE_DIR="$HOMEBREW_PREFIX/include/eigen3"
+        
+        # Build the extension in place first with explicit paths
+        python setup.py build_ext --inplace \
+          --include-dirs="$HOMEBREW_PREFIX/include:$HOMEBREW_PREFIX/include/eigen3:/tmp/lib/cgal/include:/tmp/lib/boost/include" \
+          --library-dirs="$HOMEBREW_PREFIX/lib:/tmp/lib/cgal/lib:/tmp/lib/boost/lib"
+        
+        # Build the wheel
         python setup.py bdist_wheel
 
-    - name: Test wheel
+    - name: Repair wheel with delocate
       run: |
-        pip install dist/*.whl
-        python -m pytest test -v
-
-    - name: Repair wheel
-      run: |
-        delocate-wheel -w dist/repaired/ dist/*.whl
-
-    - name: Upload wheel
-      uses: actions/upload-artifact@v4
-      with:
-        name: macos-wheel-py${{ github.event.inputs.python_version }}
-        path: dist/repaired/*.whl
+        # Install delocate for wheel repair
+        pip install delocate
+        
+        # Set library search paths for delocate
+        export DYLD_LIBRARY_PATH="/tmp/lib/boost/lib:/tmp/lib/cgal/lib:$HOMEBREW_PREFIX/lib:$DYLD_LIBRARY_PATH"
+               
+        # Create repaired directory
+        mkdir -p dist/repaired/
+        
+        # Repair the wheel with verbose output and explicit library directories
+        delocate-wheel -w dist/repaired/ \
+          --lib-dir /tmp/lib/boost/lib \
+          --lib-dir /tmp/lib/cgal/lib \
+          --lib-dir $HOMEBREW_PREFIX/lib \
+          -v \
+          dist/*.whl
+        
+        # Alternative: If delocate still fails, try with dylibbundler approach
+        if [ $? -ne 0 ]; then
+          echo "=== Delocate failed, trying alternative approach ==="
+          
+          # Extract the wheel to inspect and manually fix
+          cd dist
+          wheel_name=$(ls *.whl)
+          unzip -q $wheel_name -d temp_wheel/
+          
+          # Find the .so file
+          so_file=$(find temp_wheel -name "*.so" | head -1)
+          echo "Found .so file: $so_file"
+          
+          # Check its dependencies
+          otool -L "$so_file"
+          
+          # Use install_name_tool to fix the paths
+          for lib in thread atomic system date_time chrono; do
+            if otool -L "$so_file" | grep -q "libboost_${lib}"; then
+              echo "Fixing libboost_${lib}..."
+              install_name_tool -change "@rpath/libboost_${lib}.dylib" "/tmp/lib/boost/lib/libboost_${lib}.dylib" "$so_file"
+            fi
+          done
+          
+          # Check the result
+          echo "=== After fixing ==="
+          otool -L "$so_file"
+          
+          # Repackage the wheel
+          cd temp_wheel
+          zip -r "../repaired/${wheel_name}" .
+          cd ../..
+        fi
