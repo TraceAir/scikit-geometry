@@ -50,7 +50,7 @@ jobs:
         
         # Install Python build dependencies
         python -m pip install --upgrade pip
-        python -m pip install wheel setuptools pybind11 numpy pytest matplotlib
+        python -m pip install wheel setuptools pybind11 numpy
 
     - name: Set Homebrew paths
       run: |
@@ -239,6 +239,7 @@ jobs:
         export DYLD_LIBRARY_PATH="/tmp/lib/boost/lib:/tmp/lib/cgal/lib:$HOMEBREW_PREFIX/lib:$DYLD_LIBRARY_PATH"
 
         # Install the wheel for testing
+        pip install IPython pytest matplotlib
         pip install dist/repaired/*.whl
         
         # Run tests
