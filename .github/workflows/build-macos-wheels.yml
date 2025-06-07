@@ -236,6 +236,8 @@ jobs:
     - name: Run tests
       shell: bash
       run: |
+        export DYLD_LIBRARY_PATH="/tmp/lib/boost/lib:/tmp/lib/cgal/lib:$HOMEBREW_PREFIX/lib:$DYLD_LIBRARY_PATH"
+
         # Install the wheel for testing
         pip install dist/repaired/*.whl
         
