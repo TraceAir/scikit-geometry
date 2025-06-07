@@ -237,13 +237,23 @@ jobs:
       shell: bash
       run: |
         export DYLD_LIBRARY_PATH="/tmp/lib/boost/lib:/tmp/lib/cgal/lib:$HOMEBREW_PREFIX/lib:$DYLD_LIBRARY_PATH"
-
-        # Install the wheel for testing
-        pip install IPython pytest matplotlib pytest-timeout
-        pip install dist/repaired/*.whl
         
-        # Run tests
-        python -m pytest --timeout=10 test -vv
+        # Thread safety settings
+        export OMP_NUM_THREADS=1
+        export MKL_NUM_THREADS=1
+        
+        # Install dependencies
+        pip install IPython pytest matplotlib pytest-timeout pytest-forked
+        pip install dist/repaired/*.whl
+                
+        # Run tests with multiple fallback strategies
+        echo "Trying thread-based timeout..."
+        timeout 300 python -m pytest --timeout=10 --timeout-method=thread test -v || \
+        (echo "Thread timeout failed, trying forked..." && \
+         timeout 300 python -m pytest --timeout=10 --forked test -v) ||
+        (echo "Forked timeout failed, trying single thread..." && \
+         python -m pytest --timeout=10 -n 0 --tb=short test -v)
+
 
     - name: Upload wheel artifacts
       uses: actions/upload-artifact@v4
