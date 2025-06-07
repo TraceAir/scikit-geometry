@@ -239,11 +239,11 @@ jobs:
         export DYLD_LIBRARY_PATH="/tmp/lib/boost/lib:/tmp/lib/cgal/lib:$HOMEBREW_PREFIX/lib:$DYLD_LIBRARY_PATH"
 
         # Install the wheel for testing
-        pip install IPython pytest matplotlib
+        pip install IPython pytest matplotlib pytest-timeout
         pip install dist/repaired/*.whl
         
         # Run tests
-        python -m pytest test -v
+        python -m pytest --timeout=10 test -vv
 
     - name: Upload wheel artifacts
       uses: actions/upload-artifact@v4
