@@ -238,9 +238,7 @@ jobs:
       run: |
         export DYLD_LIBRARY_PATH="/tmp/lib/boost/lib:/tmp/lib/cgal/lib:$HOMEBREW_PREFIX/lib:$DYLD_LIBRARY_PATH"
         
-        # Thread safety settings
-        export OMP_NUM_THREADS=1
-        export MKL_NUM_THREADS=1
+        export MPLBACKEND=Agg
         
         python -m venv venv
         source venv/bin/activate
