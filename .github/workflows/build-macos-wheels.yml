@@ -248,11 +248,11 @@ jobs:
                 
         # Run tests with multiple fallback strategies
         echo "Trying thread-based timeout..."
-        timeout 300 python -m pytest --timeout=10 --timeout-method=thread test -v || \
+        pytest --timeout=10 --timeout-method=thread test -v || \
         (echo "Thread timeout failed, trying forked..." && \
-         timeout 300 python -m pytest --timeout=10 --forked test -v) ||
+        pytest --timeout=10 --forked test -v) ||
         (echo "Forked timeout failed, trying single thread..." && \
-         python -m pytest --timeout=10 -n 0 --tb=short test -v)
+        pytest --timeout=10 -n 0 --tb=short test -v)
 
 
     - name: Upload wheel artifacts
