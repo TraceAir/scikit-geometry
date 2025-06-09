@@ -160,6 +160,10 @@ jobs:
       run: |
         pip install delocate
         mkdir -p dist/repaired/
+        
+        # Help delocate find our custom libraries
+        export DYLD_LIBRARY_PATH="/tmp/lib/boost/lib:/tmp/lib/cgal/lib:$HOMEBREW_PREFIX/lib:$DYLD_LIBRARY_PATH"
+        
         delocate-wheel -w dist/repaired/ -v dist/*.whl
 
     - name: Run tests
