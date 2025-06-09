@@ -114,19 +114,6 @@ jobs:
         cd /
         rm -rf /tmp/cgal
 
-    - name: Debug library paths
-      run: |
-        echo "=== Homebrew prefix: $HOMEBREW_PREFIX ==="
-        ls -la $HOMEBREW_PREFIX/lib/libgmp*
-        ls -la $HOMEBREW_PREFIX/lib/libmpfr*
-        echo "=== Boost libraries ==="
-        ls -la /tmp/lib/boost/lib/libboost_*
-        echo "=== CGAL libraries ==="
-        ls -la /tmp/lib/cgal/lib/ || true
-        echo "=== Environment variables ==="
-        echo "LDFLAGS: $LDFLAGS"
-        echo "CPPFLAGS: $CPPFLAGS"
-
     - name: Build wheel
       run: |
         # Set environment variables for the build
@@ -171,6 +158,7 @@ jobs:
       run: |
         export DYLD_LIBRARY_PATH="/tmp/lib/boost/lib:/tmp/lib/cgal/lib:$HOMEBREW_PREFIX/lib:$DYLD_LIBRARY_PATH"
         
+        # Disable interactive matplotlib backend
         export MPLBACKEND=Agg
         
         python -m venv venv
