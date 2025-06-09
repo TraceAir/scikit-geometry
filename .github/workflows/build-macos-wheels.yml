@@ -63,32 +63,26 @@ jobs:
 
     - name: Install Boost with static libraries
       run: |
-        # Download and build Boost with static libraries
         cd /tmp
         curl -L -o boost_${BOOST_VERSION_UNDERSCORE}.tar.gz \
           "https://archives.boost.io/release/${BOOST_VERSION}/source/boost_${BOOST_VERSION_UNDERSCORE}.tar.gz"
         tar xzf boost_${BOOST_VERSION_UNDERSCORE}.tar.gz
         cd boost_${BOOST_VERSION_UNDERSCORE}
         
-        # Configure for both static and shared libraries
+        # Configure for shared libraries only
         ./bootstrap.sh --prefix=/tmp/lib/boost \
           --with-libraries=system,filesystem,program_options,iostreams,serialization,thread,date_time,chrono,atomic
         
-        # Build both static and shared libraries
+        # Build shared libraries only (much faster)
         ./b2 -j$(sysctl -n hw.ncpu) \
           variant=release \
-          link=shared,static \
+          link=shared \
           threading=multi \
           runtime-link=shared \
           cxxflags="-fPIC" \
           install
         
-        # Verify libraries were built
-        echo "Boost libraries built:"
-        ls -la /tmp/lib/boost/lib/
-        
         # Clean up
-        cd /
         rm -rf /tmp/boost_${BOOST_VERSION_UNDERSCORE}*
 
     - name: Install CGAL
