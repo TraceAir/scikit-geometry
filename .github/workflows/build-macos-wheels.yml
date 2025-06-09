@@ -116,31 +116,14 @@ jobs:
 
     - name: Build wheel
       run: |
-        # Set environment variables for the build
         export MACOSX_DEPLOYMENT_TARGET=14.0
         export CGAL_DIR="/tmp/lib/cgal"
-        export BOOST_DIR="/tmp/lib/boost"
         export BOOST_ROOT="/tmp/lib/boost"
         
-        # Add Homebrew paths to build environment
-        export CPATH="$HOMEBREW_PREFIX/include:/tmp/lib/boost/include:/tmp/lib/cgal/include:$CPATH"
-        export LIBRARY_PATH="$HOMEBREW_PREFIX/lib:/tmp/lib/boost/lib:/tmp/lib/cgal/lib:$LIBRARY_PATH"
-        export LD_LIBRARY_PATH="$HOMEBREW_PREFIX/lib:/tmp/lib/boost/lib:/tmp/lib/cgal/lib:$LD_LIBRARY_PATH"
-        export DYLD_LIBRARY_PATH="$HOMEBREW_PREFIX/lib:/tmp/lib/boost/lib:/tmp/lib/cgal/lib:$DYLD_LIBRARY_PATH"
-        
-        # Set compiler flags to include all necessary paths
+        # Add library paths for linking
+        export LDFLAGS="-L$HOMEBREW_PREFIX/lib -L/tmp/lib/cgal/lib -L/tmp/lib/boost/lib"
         export CPPFLAGS="-I$HOMEBREW_PREFIX/include -I/tmp/lib/cgal/include -I/tmp/lib/boost/include"
-        export LDFLAGS="-L$HOMEBREW_PREFIX/lib -L/tmp/lib/cgal/lib -L/tmp/lib/boost/lib -lgmp -lmpfr"
         
-        # Set additional environment variables for setup.py
-        export GMP_DIR="$HOMEBREW_PREFIX"
-        export MPFR_DIR="$HOMEBREW_PREFIX"
-        export EIGEN3_INCLUDE_DIR="$HOMEBREW_PREFIX/include/eigen3"
-        
-        # Build the extension in place first with explicit paths
-        python setup.py build_ext --inplace 
-        
-        # Build the wheel
         python setup.py bdist_wheel
 
     - name: Repair wheel
