@@ -158,78 +158,9 @@ jobs:
 
     - name: Repair wheel
       run: |
-
-        # Install delocate for wheel repair
         pip install delocate
-        
-        set -x
-        
-        # Create repaired directory
         mkdir -p dist/repaired/
-        
-        # First, let's inspect what we built
-        echo "=== Checking built wheel ==="
-        ls -la dist/
-        wheel_name=$(ls dist/*.whl | head -1)
-        echo "Wheel file: $wheel_name"
-        
-        # Extract the wheel to inspect and fix dependencies
-        cd dist
-        wheel_basename=$(basename $wheel_name)
-        unzip -q $wheel_basename -d temp_wheel/
-        
-        # Find the .so file
-        so_file=$(find temp_wheel -name "*.so" | head -1)
-        echo "Found .so file: $so_file"
-        
-        # Check its current dependencies
-        echo "=== Current dependencies ==="
-        otool -L "$so_file"
-        
-        # Copy required Boost libraries to a temp location accessible by delocate
-        echo "=== Copying Boost libraries ==="
-        mkdir -p /tmp/wheel_libs
-        cp /tmp/lib/boost/lib/libboost_*.dylib /tmp/wheel_libs/ 2>/dev/null || true
-        cp /tmp/lib/cgal/lib/*.dylib /tmp/wheel_libs/ 2>/dev/null || true
-        ls -la /tmp/wheel_libs/
-        
-        # Use install_name_tool to fix the @rpath references to absolute paths
-        echo "=== Fixing library paths ==="
-        for lib in thread atomic system date_time chrono filesystem program_options iostreams serialization; do
-          if otool -L "$so_file" | grep -q "libboost_${lib}"; then
-            echo "Fixing libboost_${lib}..."
-            install_name_tool -change "@rpath/libboost_${lib}.dylib" "/tmp/wheel_libs/libboost_${lib}.dylib" "$so_file" 2>/dev/null || true
-          fi
-        done
-        
-        # Check the result after fixing
-        echo "=== Dependencies after fixing ==="
-        otool -L "$so_file"
-        
-        # Repackage the wheel
-        cd temp_wheel
-        zip -r "../${wheel_basename}" .
-        cd ..
-        
-        # Now try delocate with the fixed wheel
-        echo "=== Running delocate ==="
-        export DYLD_LIBRARY_PATH="/tmp/wheel_libs:/tmp/lib/boost/lib:/tmp/lib/cgal/lib:$HOMEBREW_PREFIX/lib:$DYLD_LIBRARY_PATH"
-        
-        # Copy the libraries to locations where delocate can find them
-        sudo mkdir -p /usr/local/lib
-        sudo cp /tmp/wheel_libs/*.dylib /usr/local/lib/ 2>/dev/null || true
-        
-        delocate-wheel -w repaired/ -v $wheel_basename
-        
-        # If delocate still fails, use the manually fixed wheel
-        if [ $? -ne 0 ]; then
-          echo "=== Delocate failed, using manually fixed wheel ==="
-          cp $wheel_basename repaired/
-        fi
-        
-        # Clean up
-        rm -rf temp_wheel/
-        cd ..
+        delocate-wheel -w dist/repaired/ -v dist/*.whl
 
     - name: Run tests
       shell: bash
