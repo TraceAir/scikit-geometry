@@ -61,7 +61,7 @@ jobs:
         echo "CPPFLAGS=-I$HOMEBREW_PREFIX/include" >> $GITHUB_ENV
         echo "LDFLAGS=-L$HOMEBREW_PREFIX/lib" >> $GITHUB_ENV
 
-    - name: Install Boost with static libraries
+    - name: Install Boost
       run: |
         cd /tmp
         curl -L -o boost_${BOOST_VERSION_UNDERSCORE}.tar.gz \
