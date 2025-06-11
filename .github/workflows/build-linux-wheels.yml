@@ -1,0 +1,63 @@
+name: Build Linux x86 Wheels
+
+on:
+  push:
+    branches: [ ta-develop ]
+    tags: [ 'v*' ]
+  pull_request:
+    branches: [ ta-develop ]
+  workflow_dispatch:
+    inputs:
+      python_versions:
+        description: 'Python versions to build (comma-separated)'
+        required: false
+        default: '3.10'
+      cgal_version:
+        description: 'CGAL version tag'
+        required: false
+        default: 'v5.6'
+
+jobs:
+  build-linux-wheels:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ['3.10']
+
+    env:
+      CGAL_VERSION: ${{ github.event.inputs.cgal_version || 'v5.6' }}
+      PYTHON_VERSION_MINOR: ${{ matrix.python-version == '3.10' && '10' || matrix.python-version == '3.9' && '9' || matrix.python-version == '3.8' && '8' || matrix.python-version == '3.11' && '11' || '10' }}
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Build Docker image
+      run: |
+        docker build \
+          --build-arg PYTHON_VERSION_MINOR="${PYTHON_VERSION_MINOR}" \
+          --build-arg CGAL_VERSION_TAG="${CGAL_VERSION}" \
+          -t scikit-geometry-builder -f docker/Dockerfile-buildwheel .
+
+    - name: Build and test wheel
+      run: |
+        mkdir -p ./dist
+
+        # Run the Docker container to build the wheel
+        docker run --rm \
+          -e USER_GROUP="$(id -u):$(id -g)" \
+          -e PYTHON_VERSION_MINOR="${PYTHON_VERSION_MINOR}" \
+          -v "$(pwd)/dist:/app/output" \
+          scikit-geometry-builder
+
+    - name: Upload wheel artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: linux-wheels-py${{ matrix.python-version }}
+        path: |
+          dist/*.whl
+        retention-days: 90
