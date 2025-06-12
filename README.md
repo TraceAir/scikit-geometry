@@ -2,7 +2,7 @@
 
 ![scikit-geometry logo](docs/source/_static/scikit-geometry.svg)
 
-*A Python Geometric Algorithms Library*
+_A Python Geometric Algorithms Library_
 
 The scikit-geometry package contains a whole lot of geometric algorithms. For the moment, scikit-geometry derives most of it’s functionality from the mature and stable Computational Geometry Algorithms Library (CGAL) package, a collection of geometric algorithms written in C++.
 Basic Geometric Types
@@ -55,3 +55,13 @@ It is built from Jupyter notebooks that can be found under the `/docs` subdirect
 ## License
 
 This software is licensed under the LGPL-3 license. See the [LICENSE](LICENSE) file for details.
+
+## MacOS development instruction
+
+Steps to install on MacOS:
+
+1. Open the github actions "Build macos wheels" https://github.com/TraceAir/scikit-geometry/actions/workflows/build-macos-wheels.yml
+2. Choose branch `ta-develop` (in Run workflow dropdown) and python/CGAL versions
+3. Download the generated artefact when it is ready (the generated artifact will be deleted after 1 month)
+4. Switch to env with previous mentioned python version
+5. Install it via pip: `pip install {artifact_name}.whl`
